@@ -2,6 +2,11 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.2] - 2026-11-01
+
+### Added
+- Plugin sources can hand file-host links to LinkGrabber instead of a torrent (one package per pick).
+
 ## [0.3.1] - 2026-10-31
 
 ### Added

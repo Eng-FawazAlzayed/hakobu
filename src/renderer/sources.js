@@ -1,4 +1,4 @@
-/* global api, icon, svgIcon, $, $$, esc, bytes, settings, toast, items, showView, moveIndicator, confirmModal */
+/* global api, icon, svgIcon, $, $$, esc, bytes, settings, toast, items, showView, moveIndicator, confirmModal, addToGrabber */
 // Plugin sources: a plugin can add a browsable catalogue under Source in the sidebar
 // (e.g. a ROM archive: platform tiles -> file list -> tick files -> Start).
 
@@ -211,8 +211,12 @@ async function startSrcPicked(picks = srcState.list.filter(r => srcState.picked.
   $('#srcSel').innerHTML = `<span class="spinner sm"></span> Getting ${picks.length} file${picks.length > 1 ? 's' : ''} ready…`;
   try {
     const got = await api.sourceResolve(srcState.id, picks);
+    // File-host links (no torrent) go to LinkGrabber, one package per pick, where they're checked and routed.
+    const hosted = got.filter(g => !g.magnet && g.links?.length);
+    for (const g of hosted) addToGrabber((await api.parse(g.links.join('\n'))).map(e => ({ ...e, package: g.title, autoPackage: g.title })), false);
+    if (hosted.length) toast('ok', `${hosted.length} game${hosted.length > 1 ? 's' : ''} sent to LinkGrabber`, 'Check the links there and press Start. File hosts usually need TorBox or Real-Debrid.');
     const byHash = new Map();
-    for (const g of got) {
+    for (const g of got.filter(x => x.magnet)) {
       const k = g.infoHash || g.magnet;
       const e = byHash.get(k) || { ...g, titles: [], selectedFiles: [], size: 0 };
       e.titles.push(g.title);
@@ -237,7 +241,8 @@ async function startSrcPicked(picks = srcState.list.filter(r => srcState.picked.
     for (const p of picks) srcState.picked.delete(p.id);
     renderSrcRows();
     const parts = [n && `${n} download${n > 1 ? 's' : ''} started`, merged && `${merged} file${merged > 1 ? 's' : ''} added to a running download`].filter(Boolean);
-    toast('ok', `${got.length} file${got.length === 1 ? '' : 's'} on the way`, parts.join(' · ') || 'Already in your downloads');
+    const torrents = got.length - hosted.length;
+    if (torrents) toast('ok', `${torrents} file${torrents === 1 ? '' : 's'} on the way`, parts.join(' · ') || 'Already in your downloads');
     if (got.length < picks.length) toast('err', `${picks.length - got.length} file${picks.length - got.length > 1 ? 's' : ''} couldn't be fetched`, `${srcState.title} didn't answer for them. Tick them and press Start again.`);
   } catch (e) {
     toast('err', "Couldn't start the download", cleanErr(e));

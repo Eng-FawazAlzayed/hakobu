@@ -249,7 +249,7 @@ function torznabUrl(base, apikey, q) {
 //     categories() -> [{ id, name, group?, detail?, icon? }],
 //     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, or a list tried in order), label?,
 //                            regions? (filter chips), tags?, description?, screens? (https URLs), facts? ([label, value]), link? }],
-//     resolve(rows) -> [{ title, magnet, infoHash, selectedFiles?, size? }],
+//     resolve(rows) -> [{ title, magnet, infoHash, selectedFiles?, size? } or { title, links: [file-host URLs] } for LinkGrabber],
 //     optional: search(query) -> rows, info(row) -> extra row fields for its detail page,
 //               categoryLabel ('Consoles', 'Genres'…), artShape ('portrait' for posters / box art) }
 // Modules are reloaded when their file changes, so a plugin keeps its caches between calls.
