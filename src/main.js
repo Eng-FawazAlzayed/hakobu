@@ -334,7 +334,23 @@ function registerIpc() {
     if (!p) throw new Error('That plugin is turned off or no longer in the plugins folder');
     return p.source;
   };
-  ipcMain.handle('sources', () => loadPlugins(pluginDir(), offPlugins()).filter(p => p.source).map(p => ({ id: p.id, title: p.source.title || p.name, icon: p.source.icon || '' })));
+  ipcMain.handle('sources', () =>
+    loadPlugins(pluginDir(), offPlugins())
+      .filter(p => p.source)
+      .map(({ id, name, source: s }) => ({
+        id, title: s.title || name, icon: s.icon || '', categoryLabel: s.categoryLabel || '', artShape: s.artShape === 'portrait' ? 'portrait' : 'wide',
+        searchable: typeof s.search === 'function', info: typeof s.info === 'function',
+      }))
+  );
+  ipcMain.handle('sourceSearch', async (_e, id, q) => {
+    const s = pluginSource(id);
+    if (typeof s.search !== 'function') throw new Error("This source can't search");
+    return s.search(String(q));
+  });
+  ipcMain.handle('sourceInfo', async (_e, id, row) => {
+    const s = pluginSource(id);
+    return typeof s.info === 'function' ? (await s.info(row)) || {} : {};
+  });
   // Settings → Plugins: every .js in the folder, including turned-off and broken ones.
   const pluginList = () => {
     const off = offPlugins();

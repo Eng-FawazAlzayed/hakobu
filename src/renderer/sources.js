@@ -64,13 +64,15 @@ async function openSource(id) {
 
 function renderSrcGrid() {
   const q = srcFilterText();
-  const cats = srcState.cats.filter(c => !q || `${c.name} ${c.group || ''}`.toLowerCase().includes(q));
+  const all = srcState.cats.filter(c => !c.hidden);
+  const cats = all.filter(c => !q || `${c.name} ${c.group || ''}`.toLowerCase().includes(q));
+  const s = srcCurrent();
   $('#srcRows').innerHTML = '';
   $('#srcTools').classList.add('hidden');
   $('#srcRegions').classList.add('hidden');
   $('#srcBack').classList.add('hidden');
-  $('#srcFilter').placeholder = 'Filter platforms';
-  $('#srcInfo').textContent = `${srcState.cats.length} platforms`;
+  $('#srcFilter').placeholder = s.searchable ? `Search ${s.title} (Enter)` : `Filter ${(s.categoryLabel || 'categories').toLowerCase()}`;
+  $('#srcInfo').textContent = `${all.length} ${(s.categoryLabel || 'categories').toLowerCase()}`;
   let group = null;
   let i = 0;
   $('#srcGrid').innerHTML = cats
@@ -81,7 +83,7 @@ function renderSrcGrid() {
         <span class="art">${svgIcon(c.icon, 'archive')}</span><strong>${esc(c.name)}</strong>${c.detail ? `<small>${esc(c.detail)}</small>` : ''}</button>`;
     })
     .join('');
-  srcEmpty(cats.length ? '' : srcState.cats.length ? 'Nothing matches the filter' : 'This source has no platforms');
+  srcEmpty(cats.length ? '' : all.length ? (s.searchable ? 'Press Enter to search' : 'Nothing matches the filter') : 'This source is empty');
 }
 
 async function openSrcCategory(catId) {
@@ -97,7 +99,7 @@ async function openSrcCategory(catId) {
   $('#srcGrid').innerHTML = '';
   $('#srcRows').innerHTML = '';
   $('#srcBack').classList.remove('hidden');
-  $('#srcBackLabel').textContent = 'Platforms';
+  $('#srcBackLabel').textContent = srcCurrent().categoryLabel || 'Back';
   $('#viewTitle').textContent = `${srcState.title} · ${cat.name}`;
   $('#srcInfo').textContent = '';
   $('#srcTools').classList.add('hidden');
@@ -106,7 +108,7 @@ async function openSrcCategory(catId) {
   try {
     if (!srcLists.has(key)) {
       srcEmpty(`Loading ${cat.name}…`, 'Big platforms can take a moment.', true);
-      srcLists.set(key, await api.sourceList(srcState.id, catId));
+      srcLists.set(key, await (cat.search ? api.sourceSearch(srcState.id, cat.search) : api.sourceList(srcState.id, catId)));
     }
     if (token !== srcState.token) return;
     srcState.list = srcLists.get(key);
@@ -151,7 +153,7 @@ const artImg = r => {
 function srcCard(r, i, on) {
   const regions = (r.regions || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
   const art = artImg(r);
-  return `<div class="shop-card${on ? ' sel' : ''}" data-id="${esc(r.id)}" title="${esc(r.title)}" style="animation-delay:${Math.min(i, 24) * 14}ms">
+  return `<div class="shop-card${on ? ' sel' : ''}${srcCurrent().artShape === 'portrait' ? ' portrait' : ''}" data-id="${esc(r.id)}" title="${esc(r.title)}" style="animation-delay:${Math.min(i, 24) * 14}ms">
     <div class="shop-art cover">${art}${svgIcon(srcState.cat?.icon, 'image')}<span class="check${on ? ' on' : ''}">${icon('check')}</span></div>
     <div class="shop-info"><strong>${esc(r.label || r.title)}</strong>
       <div class="shop-meta">${regions}${r.tags?.length ? `<span class="tagline">${esc(r.tags.join(' · '))}</span>` : ''}</div>
@@ -202,14 +204,13 @@ function renderSrcSel() {
 
 // Files from the same collection torrent become one download with all their picks; picks for a torrent
 // that's already in the list are added to it instead of starting a duplicate.
-async function startSrcPicked() {
-  const picks = srcState.list.filter(r => srcState.picked.has(r.id));
+async function startSrcPicked(picks = srcState.list.filter(r => srcState.picked.has(r.id))) {
   if (!picks.length) return;
   const btn = $('#srcStart');
   btn.disabled = true;
   $('#srcSel').innerHTML = `<span class="spinner sm"></span> Getting ${picks.length} file${picks.length > 1 ? 's' : ''} ready…`;
   try {
-    const got = await api.sourceResolve(srcState.id, picks.map(({ id, title, size }) => ({ id, title, size })));
+    const got = await api.sourceResolve(srcState.id, picks);
     const byHash = new Map();
     for (const g of got) {
       const k = g.infoHash || g.magnet;
@@ -233,7 +234,7 @@ async function startSrcPicked() {
       fresh.push({ kind: 'torrent', via: 'p2p', source: e.magnet, infoHash: e.infoHash, name, selectedFiles: files.length ? files : undefined, size: e.size || undefined, dir: settings.downloadDir });
     }
     const n = fresh.length ? await api.add(fresh) : 0;
-    srcState.picked.clear();
+    for (const p of picks) srcState.picked.delete(p.id);
     renderSrcRows();
     const parts = [n && `${n} download${n > 1 ? 's' : ''} started`, merged && `${merged} file${merged > 1 ? 's' : ''} added to a running download`].filter(Boolean);
     toast('ok', `${got.length} file${got.length === 1 ? '' : 's'} on the way`, parts.join(' · ') || 'Already in your downloads');
@@ -255,10 +256,15 @@ $('#srcGrid').addEventListener('click', e => {
   const t = e.target.closest('.src-tile');
   if (t) openSrcCategory(t.dataset.cat);
 });
+// A card opens its detail page when there's more to show; the tick box always just picks it.
+const srcCurrent = () => srcCatalog.find(s => s.id === srcState.id) || {};
+const hasDetail = r => srcCurrent().info || r.description || r.screens?.length || r.facts?.length;
 $('#srcRows').addEventListener('click', e => {
   const row = e.target.closest('.src-row, .shop-card');
   if (!row) return;
   const id = row.dataset.id;
+  const r = srcState.list.find(x => x.id === id);
+  if (r && row.classList.contains('shop-card') && !e.target.closest('.check') && hasDetail(r)) return openSrcDetail(r);
   const on = !srcState.picked.has(id);
   if (on) srcState.picked.add(id);
   else srcState.picked.delete(id);
@@ -315,7 +321,90 @@ $('#srcFilter').addEventListener('input', () => {
   clearTimeout(srcFilterTimer);
   srcFilterTimer = setTimeout(() => (srcState.cat ? renderSrcRows() : renderSrcGrid()), 120);
 });
-$('#srcStart').addEventListener('click', startSrcPicked);
+$('#srcStart').addEventListener('click', () => startSrcPicked());
+
+// ---------- detail page (shop "product page") ----------
+let detailRow = null;
+const paragraphs = t =>
+  String(t || '')
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+function renderSrcDetail(r, loading) {
+  const [cover] = artList(r);
+  const on = srcState.picked.has(r.id);
+  const regions = (r.regions || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
+  const facts = [...(r.facts || []), ...(r.size ? [['Size', bytes(r.size)]] : [])];
+  const shots = (r.screens || []).filter(u => /^https:\/\//.test(u));
+  $('#srcDetail').innerHTML = `<div class="sd-panel card">
+      <button type="button" class="x sd-close" title="Close">${icon('x')}</button>
+      <div class="sd-top">
+        <div class="sd-cover${srcCurrent().artShape === 'portrait' ? ' portrait' : ''}">${cover ? `<img alt="" src="${esc(cover)}" />` : svgIcon(srcState.cat?.icon, 'image')}</div>
+        <div class="sd-head">
+          <h2>${esc(r.label || r.title)}</h2>
+          <div class="shop-meta">${regions}${r.tags?.length ? `<span class="tagline">${esc(r.tags.join(' · '))}</span>` : ''}</div>
+          ${facts.length ? `<dl class="sd-facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
+          <div class="hrow">
+            <button type="button" class="btn ghost" data-sd="pick">${icon(on ? 'check' : 'plus')}${on ? 'Selected' : 'Select'}</button>
+            <button type="button" class="btn primary" data-sd="get">${icon('download')}Download</button>
+            ${r.link && /^https:\/\//.test(r.link) ? `<span class="muted ell" title="${esc(r.link)}">${esc(new URL(r.link).host)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      ${shots.length ? `<div class="sd-shots">${shots.map(u => `<img loading="lazy" alt="" src="${esc(u)}" />`).join('')}</div>` : ''}
+      <div class="sd-desc">${loading ? '<span class="spinner sm"></span> Loading details…' : paragraphs(r.description) || '<p class="muted">No description.</p>'}</div>
+    </div>`;
+}
+async function openSrcDetail(r) {
+  detailRow = r;
+  $('#srcDetail').classList.remove('hidden');
+  const needInfo = srcCurrent().info && !r.infoLoaded;
+  renderSrcDetail(r, needInfo);
+  $('#srcDetail .sd-panel').scrollTop = 0;
+  if (!needInfo) return;
+  const hadArt = artList(r).length;
+  try {
+    Object.assign(r, await api.sourceInfo(srcState.id, r), { infoLoaded: true });
+  } catch (e) {
+    r.description = r.description || `Couldn't load the details: ${cleanErr(e)}`;
+  }
+  if (detailRow === r) renderSrcDetail(r);
+  if (!hadArt && artList(r).length) renderSrcRows();
+}
+const closeSrcDetail = () => {
+  detailRow = null;
+  $('#srcDetail').classList.add('hidden');
+};
+$('#srcDetail').addEventListener('click', e => {
+  if (e.target === e.currentTarget || e.target.closest('.sd-close')) return closeSrcDetail();
+  const act = e.target.closest('[data-sd]')?.dataset.sd;
+  if (!act || !detailRow) return;
+  if (act === 'get') {
+    startSrcPicked([detailRow]);
+    return closeSrcDetail();
+  }
+  srcState.picked.has(detailRow.id) ? srcState.picked.delete(detailRow.id) : srcState.picked.add(detailRow.id);
+  renderSrcDetail(detailRow);
+  renderSrcRows();
+});
+$('#srcDetail').addEventListener('error', e => e.target.matches?.('.sd-shots img') && e.target.remove(), true);
+document.addEventListener('keydown', e => e.key === 'Escape' && detailRow && closeSrcDetail());
+
+// ---------- search inside a source (Enter in the filter box on the categories page) ----------
+async function searchSource(q) {
+  const s = srcCurrent();
+  srcState.cats.length || (await openSource(s.id));
+  const cat = { id: `search:${q}`, name: `“${q}”`, icon: s.icon, search: q };
+  if (!srcState.cats.some(c => c.id === cat.id)) srcState.cats.push({ ...cat, hidden: true });
+  openSrcCategory(cat.id);
+}
+$('#srcFilter').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !srcCurrent().searchable) return;
+  const q = $('#srcFilter').value.trim();
+  if (q) searchSource(q);
+});
 
 // ---------- Settings → Plugins ----------
 function renderPlugins(list) {

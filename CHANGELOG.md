@@ -2,6 +2,13 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.0] - 2026-10-31
+
+### Added
+- Detail pages for plugin sources: click a card for a big cover, facts, screenshots, a description and a Download button.
+- Search inside a plugin source: type in the filter box on its first page and press Enter.
+- Portrait covers for sources whose art is posters or box art.
+
 ## [0.2.0] - 2026-10-31
 
 ### Added

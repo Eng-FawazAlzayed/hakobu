@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('api', {
   sourceCategories: id => ipcRenderer.invoke('sourceCategories', id),
   sourceList: (id, cat) => ipcRenderer.invoke('sourceList', id, cat),
   sourceResolve: (id, picks) => ipcRenderer.invoke('sourceResolve', id, picks),
+  sourceSearch: (id, q) => ipcRenderer.invoke('sourceSearch', id, q),
+  sourceInfo: (id, row) => ipcRenderer.invoke('sourceInfo', id, row),
   feeds: () => ipcRenderer.invoke('feeds'),
   feedAdd: (url, refreshMin) => ipcRenderer.invoke('feedAdd', url, refreshMin),
   feedUpdate: (id, patch) => ipcRenderer.invoke('feedUpdate', id, patch),

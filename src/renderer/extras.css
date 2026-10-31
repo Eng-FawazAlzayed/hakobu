@@ -193,3 +193,31 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 #srcLayout .ico { width: 15px; height: 15px; }
 .plug-name .plug-desc { font-size: 12px; color: var(--text-2); }
 .plugins-card.dropping { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* portrait covers (game posters, anime key art) */
+.shop-grid:has(.shop-card.portrait) { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.shop-card.portrait .shop-art { aspect-ratio: 3 / 4; }
+.shop-card.portrait .shop-art img { object-fit: cover; padding: 0; filter: none; }
+
+/* detail page: a panel over the list */
+#view-source .list-wrap { position: relative; }
+.src-detail { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 40px; background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(10px); animation: viewIn var(--med) var(--ease); }
+.src-detail.hidden { display: none; }
+.sd-panel { position: relative; width: min(920px, 100%); max-height: 100%; overflow-y: auto; padding: 26px; display: flex; flex-direction: column; gap: 20px; animation: rowIn var(--slow) var(--ease); }
+.sd-close { position: absolute; top: 14px; right: 14px; }
+.sd-top { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+.sd-cover { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden; background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-2) 12%, transparent)); border: 1px solid var(--border); color: var(--accent); }
+.sd-cover.portrait { aspect-ratio: 3 / 4; }
+.sd-cover img { width: 100%; height: 100%; object-fit: cover; }
+.sd-cover .ico { width: 48px; height: 48px; stroke-width: 1.4; }
+.sd-head { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-right: 30px; }
+.sd-head h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.sd-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13px; }
+.sd-facts dt { color: var(--text-3); }
+.sd-facts dd { margin: 0; color: var(--text); font-weight: 550; overflow-wrap: anywhere; }
+.sd-head .hrow { align-items: center; gap: 10px; margin-top: 4px; }
+.sd-shots { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.sd-shots img { height: 150px; border-radius: 10px; border: 1px solid var(--border); flex-shrink: 0; object-fit: cover; }
+.sd-desc { font-size: 14px; line-height: 1.6; color: var(--text-2); }
+.sd-desc p { margin: 0 0 10px; }
+.sd-panel > * { flex-shrink: 0; } /* the panel scrolls; its rows keep their height */

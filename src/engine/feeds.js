@@ -247,8 +247,11 @@ function torznabUrl(base, apikey, q) {
 //   source: a catalogue shown in the sidebar under Source {
 //     title, icon (24px stroke SVG shapes, like icons.js),
 //     categories() -> [{ id, name, group?, detail?, icon? }],
-//     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, or a list tried in order), label?, regions?, tags? }],
-//     resolve([{ id, title, size }]) -> [{ title, magnet, infoHash, selectedFiles?, size? }] }
+//     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, or a list tried in order), label?,
+//                            regions? (filter chips), tags?, description?, screens? (https URLs), facts? ([label, value]), link? }],
+//     resolve(rows) -> [{ title, magnet, infoHash, selectedFiles?, size? }],
+//     optional: search(query) -> rows, info(row) -> extra row fields for its detail page,
+//               categoryLabel ('Consoles', 'Genres'…), artShape ('portrait' for posters / box art) }
 // Modules are reloaded when their file changes, so a plugin keeps its caches between calls.
 // Plugins listed in `disabled` (by file name without .js) are skipped; broken ones come back with an error only.
 const pluginCache = new Map(); // file -> { mtimeMs, mod }
