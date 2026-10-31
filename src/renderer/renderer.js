@@ -225,7 +225,7 @@ function render() {
   $('#empty').classList.toggle('hidden', items.length > 0);
 
   renderCatFilters();
-  for (const b of $$('#filters button')) b.querySelector('b').textContent = items.filter(it => matches(it, b.dataset.filter)).length || '';
+  for (const b of $$('#filters button[data-filter]')) b.querySelector('b').textContent = items.filter(it => matches(it, b.dataset.filter)).length || '';
 
   const n = [...selected].filter(id => items.some(i => i.id === id)).length;
   $('#actionbar').classList.toggle('has-sel', n > 0);

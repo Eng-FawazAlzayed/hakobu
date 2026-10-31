@@ -121,6 +121,7 @@ function srcShown() {
 function renderSrcRows() {
   const shown = srcShown();
   const drawn = shown.slice(0, SHOW_MAX);
+  const hasArt = srcState.list.some(r => r.art);
   $('#srcGrid').innerHTML = '';
   $('#srcTools').classList.toggle('hidden', !srcState.list.length);
   $('#srcInfo').textContent = shown.length > SHOW_MAX
@@ -129,8 +130,9 @@ function renderSrcRows() {
   $('#srcRows').innerHTML = drawn
     .map((r, i) => {
       const on = srcState.picked.has(r.id);
-      return `<div class="row result src-row${on ? ' sel' : ''}" data-id="${esc(r.id)}" style="animation-delay:${Math.min(i, 15) * 18}ms">
-        <span class="check${on ? ' on' : ''}">${icon('check')}</span>
+      const art = /^https:\/\//.test(r.art || '') ? `<img loading="lazy" decoding="async" alt="" src="${esc(r.art)}" />` : '';
+      return `<div class="row result src-row${on ? ' sel' : ''}${hasArt ? ' has-art' : ''}" data-id="${esc(r.id)}" style="animation-delay:${Math.min(i, 15) * 18}ms">
+        <span class="check${on ? ' on' : ''}">${icon('check')}</span>${hasArt ? `<span class="cover">${art}${icon('image')}</span>` : ''}
         <div class="body"><div class="title"><span class="name" title="${esc(r.title)}">${esc(r.title)}</span></div>
           ${r.detail ? `<div class="meta"><span>${esc(r.detail)}</span></div>` : ''}</div>
         <div class="side"><span class="size">${r.size ? bytes(r.size) : ''}</span></div></div>`;
@@ -217,6 +219,9 @@ $('#srcRows').addEventListener('click', e => {
   row.querySelector('.check').classList.toggle('on', on);
   renderSrcSel();
 });
+// No cover for that game: keep the placeholder icon.
+$('#srcRows').addEventListener('error', e => e.target.matches?.('.cover img') && e.target.remove(), true);
+$('#srcRows').addEventListener('load', e => e.target.matches?.('.cover img') && e.target.parentNode.classList.add('loaded'), true);
 $('#srcAll').addEventListener('click', () => {
   const shown = srcShown();
   const all = shown.every(r => srcState.picked.has(r.id));

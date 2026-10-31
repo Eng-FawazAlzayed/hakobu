@@ -247,7 +247,7 @@ function torznabUrl(base, apikey, q) {
 //   source: a catalogue shown in the sidebar under Source {
 //     title, icon (24px stroke SVG shapes, like icons.js),
 //     categories() -> [{ id, name, group?, detail?, icon? }],
-//     list(categoryId) -> [{ id, title, size?, detail? }],
+//     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, e.g. box art) }],
 //     resolve([{ id, title, size }]) -> [{ title, magnet, infoHash, selectedFiles?, size? }] }
 // Modules are reloaded when their file changes, so a plugin keeps its caches between calls.
 // Plugins listed in `disabled` (by file name without .js) are skipped; broken ones come back with an error only.

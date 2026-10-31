@@ -147,3 +147,9 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 .plug-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .plug-name .muted, .plug-name .err { font-size: 11.5px; }
 .plug-name .err { color: var(--red); }
+.src-row.has-art { grid-template-columns: 24px 44px minmax(0, 1fr) auto; padding-top: 8px; padding-bottom: 8px; }
+.src-row .cover { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
+.src-row .cover .ico { width: 18px; height: 18px; }
+.src-row .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--med) var(--ease); }
+.src-row .cover.loaded img { opacity: 1; }
+.src-row .cover.loaded .ico { visibility: hidden; }
