@@ -241,11 +241,35 @@ function torznabUrl(base, apikey, q) {
   return u.href;
 }
 
-async function search(providers, q) {
-  const enabled = providers.filter(p => p.enabled !== false && p.url);
+// Local search plugins: <profile>/plugins/*.js, each exporting { name, search(query) -> [{ title, magnet?, torrentUrl?, size?, seeders?, selectedFiles? }] }.
+// They live only in the user's own profile folder, are never bundled, and run with the app's rights, like qBittorrent's search plugins.
+function loadSearchPlugins(dir) {
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const f of names) {
+    const file = path.join(dir, f);
+    try {
+      delete require.cache[require.resolve(file)];
+      const p = require(file);
+      if (typeof p.search === 'function') out.push({ name: p.name || f.replace(/\.js$/, ''), search: p.search, plugin: true });
+    } catch (e) {
+      console.warn('search plugin failed to load:', f, e.message);
+    }
+  }
+  return out;
+}
+
+async function search(providers, q, plugins = []) {
+  const enabled = [...providers.filter(p => p.enabled !== false && p.url), ...plugins];
   if (!enabled.length) throw new Error('Add a Jackett or Prowlarr Torznab URL in Settings → Search providers');
   const results = await Promise.allSettled(
     enabled.map(async p => {
+      if (p.plugin) return (await p.search(q)).map(i => ({ ...i, provider: p.name }));
       const { items } = parseFeed(await fetchText(torznabUrl(p.url, p.apikey, q), AbortSignal.timeout(25000)));
       return items.map(i => ({ ...i, provider: p.name || new URL(p.url).host }));
     })
@@ -256,4 +280,4 @@ async function search(providers, q) {
   return { items, errors };
 }
 
-module.exports = { parseFeed, matcher, ruleMatches, FeedService, search, resolveTorrentLink };
+module.exports = { parseFeed, matcher, ruleMatches, FeedService, search, loadSearchPlugins, resolveTorrentLink };

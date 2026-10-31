@@ -128,9 +128,12 @@ const TorrentDialog = (() => {
       try {
         const info = await api.torrentInfo({ source: e.source, torrentB64: e.torrentB64 });
         if (token !== loadToken) return;
-        Object.assign(entry, { name: info.name, size: info.size, infoHash: info.infoHash, torrentB64: info.torrentB64, files: info.files });
+        const one = entry.selectedFiles?.length === 1 && info.files[entry.selectedFiles[0]];
+        Object.assign(entry, { name: one ? one.path.split(/[\\/]/).pop() : info.name, size: info.size, infoHash: info.infoHash, torrentB64: info.torrentB64, files: info.files });
         files = info.files;
-        sel = new Set(files.map((_, i) => i));
+        // a magnet's so= (or a search plugin) may have picked files already
+        const pre = (entry.selectedFiles || []).filter(i => i < files.length);
+        sel = new Set(pre.length ? pre : files.map((_, i) => i));
         renderHead();
         renderTree();
         $('#tdLoading').classList.add('gone');

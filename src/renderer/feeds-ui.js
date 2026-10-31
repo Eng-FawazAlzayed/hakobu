@@ -13,7 +13,8 @@ const ago = ts => {
 async function grabArticle(a, extra = {}) {
   try {
     const link = a.magnet ? { source: a.magnet } : await api.resolveLink(a.torrentUrl || a.link);
-    addToGrabber([{ kind: 'torrent', name: a.title, infoHash: a.infoHash || undefined, size: a.size || undefined, ...link, ...extra }]);
+    const pick = Array.isArray(a.selectedFiles) ? { selectedFiles: a.selectedFiles } : {};
+    addToGrabber([{ kind: 'torrent', name: a.title, infoHash: a.infoHash || undefined, size: a.size || undefined, ...pick, ...link, ...extra }]);
   } catch (e) {
     toast('err', "Couldn't fetch that torrent", String(e.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
   }
@@ -33,7 +34,7 @@ function renderResults() {
       return `<div class="row result" data-i="${results.indexOf(r)}" style="animation-delay:${Math.min(i, 15) * 18}ms">
         <div class="type t-p2p">${icon('magnet')}</div>
         <div class="body"><div class="title"><span class="name" title="${esc(r.title)}">${esc(r.title)}</span></div>
-          <div class="meta"><span>${bytes(r.size)}</span><span>${esc(r.provider)}</span>${r.date ? `<span>${ago(r.date)}</span>` : ''}</div></div>
+          <div class="meta">${r.size ? `<span>${bytes(r.size)}</span>` : ''}${r.detail ? `<span>${esc(r.detail)}</span>` : ''}<span>${esc(r.provider)}</span>${r.date ? `<span>${ago(r.date)}</span>` : ''}</div></div>
         <div class="side">
           ${r.seeders != null ? `<span class="seeds ${health}" title="Seeders / leechers">▲ ${r.seeders}<small> / ${Math.max(0, (r.peers ?? r.seeders) - r.seeders)}</small></span>` : ''}
           <button class="btn primary sm" data-get>${icon('download')}Get</button>

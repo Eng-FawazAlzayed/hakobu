@@ -156,6 +156,22 @@ try {
     assert.ok(real < ep1.length * 0.2, `unselected file was downloaded (${real} matching bytes)`);
     assert.equal(sp.size, ep2.length);
     ok(`file picker: fetched metadata, downloaded only ep2.mkv (ep1 has ${(real / 1024).toFixed(0)} KB of real data, i.e. just the shared boundary piece)`);
+    // Tiny files sharing one piece (like big ROM collections): pick the middle one. Deselecting its neighbours
+    // used to drop the shared piece, so nothing downloaded.
+    const tinyDir = path.join(seedDir, 'Tiny');
+    fs.mkdirSync(tinyDir);
+    const tiny = ['a.bin', 'b.bin', 'c.bin'].map(n => [n, crypto.randomBytes(5000)]);
+    for (const [n, b] of tiny) fs.writeFileSync(path.join(tinyDir, n), b);
+    const tp = await new Promise(r => seeder.seed(tinyDir, { announce: [], pieceLength: 16384 }, r));
+    const tmeta = await mgr.torrents.fetchMetadata({ torrentB64: Buffer.from(tp.torrentFile).toString('base64') });
+    const mid = tmeta.files.findIndex(f => f.path.endsWith('b.bin'));
+    const [tt] = mgr.add([{ kind: 'torrent', via: 'p2p', source: tp.magnetURI + '&so=' + mid, torrentB64: tmeta.torrentB64, files: tmeta.files, selectedFiles: [mid], dir: path.join(tmp, 'tiny') }]);
+    await until(() => mgr.torrents.active.has(tt.id), 5000, 'tiny start');
+    mgr.torrents.addPeer(tt.id, `127.0.0.1:${seeder.torrentPort}`);
+    await until(() => tt.status === 'completed', 30000, 'shared-piece completion');
+    assert.equal(sha(fs.readFileSync(path.join(tmp, 'tiny', 'Tiny', 'b.bin'))), sha(tiny[1][1]));
+    assert.equal(tt.name, 'b.bin', 'single pick is named after the file');
+    ok('file picker: a file sharing its piece with unselected neighbours still downloads, named after the file');
     await new Promise(r => seeder.destroy(r));
   }
 

@@ -2,6 +2,17 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.1.1] - 2026-10-31
+
+### Added
+- Search plugins: put a `.js` file in `%APPDATA%\Hakobu\plugins` to add your own search source next to Jackett/Prowlarr. Plugins stay on your PC and are never bundled.
+- Magnet links with `so=` (BEP 53 "select only") open with just those files ticked.
+- A single file picked out of a big torrent is named after that file.
+
+### Fixed
+- File picker: a selected file that shares a piece with unselected neighbours (common in collections of small files) never downloaded.
+- A crash when a second peer sent a torrent's file list after the add-torrent dialog had already closed it.
+
 ## [0.1.0] - 2026-10-31
 
 First release.

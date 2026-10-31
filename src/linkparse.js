@@ -40,6 +40,19 @@ function infoHashFromMagnet(magnet) {
   return null;
 }
 
+// BEP 53 "select only": so=0,2,4-6 -> [0, 2, 4, 5, 6]
+function selectOnlyFromMagnet(magnet) {
+  const m = /[?&]so=([0-9,\-]+)/i.exec(magnet);
+  if (!m) return null;
+  const out = new Set();
+  for (const part of m[1].split(',')) {
+    const [a, b] = part.split('-').map(Number);
+    if (!Number.isInteger(a)) continue;
+    for (let i = a; i <= (Number.isInteger(b) ? Math.min(b, a + 100000) : a); i++) out.add(i);
+  }
+  return out.size ? [...out].sort((x, y) => x - y) : null;
+}
+
 function nameFromUrl(url) {
   try {
     const last = new URL(url).pathname.split('/').filter(Boolean).pop();
@@ -71,7 +84,8 @@ function parseLinks(text) {
     try {
       name = new URLSearchParams(magnet.slice(8)).get('dn') || name;
     } catch {}
-    push({ kind: 'torrent', source: magnet, name, infoHash });
+    const selectedFiles = selectOnlyFromMagnet(magnet);
+    push({ kind: 'torrent', source: magnet, name, infoHash, ...(selectedFiles ? { selectedFiles } : {}) });
   }
   rest = rest.replace(/magnet:\?[^\s"'<>]+/gi, ' ');
 
@@ -106,4 +120,4 @@ function parseLinks(text) {
   return out;
 }
 
-module.exports = { parseLinks, infoHashFromMagnet, isHoster, HOSTERS };
+module.exports = { parseLinks, infoHashFromMagnet, selectOnlyFromMagnet, isHoster, HOSTERS };

@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { parseFeed, matcher, ruleMatches, FeedService, search, resolveTorrentLink } = require('../src/engine/feeds.js');
+const { parseFeed, matcher, ruleMatches, FeedService, search, loadSearchPlugins, resolveTorrentLink } = require('../src/engine/feeds.js');
+const { parseLinks, selectOnlyFromMagnet } = require('../src/linkparse.js');
 const { Manager } = require('../src/engine/manager.js');
 const ok = msg => console.log('  ✓', msg);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-feeds-'));
@@ -123,6 +124,25 @@ try {
     assert.equal(r.errors.length, 1);
     await assert.rejects(search([], 'x'), /Add a Jackett or Prowlarr/);
     ok('Torznab search: merges providers, sorts by seeders, reports failing providers');
+  }
+
+  // ---- local search plugins + magnet so= ----
+  {
+    const dir = path.join(tmp, 'plugins');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'demo.js'), `module.exports = { name: 'Demo', search: async q => [{ title: q + '.zip', magnet: 'magnet:?xt=urn:btih:' + 'cd'.repeat(20) + '&so=7', selectedFiles: [7] }] };`);
+    fs.writeFileSync(path.join(dir, 'broken.js'), 'this is not javascript (');
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'ignored');
+    const plugins = loadSearchPlugins(dir);
+    assert.deepEqual(plugins.map(p => p.name), ['Demo'], 'broken plugin skipped, non-.js ignored');
+    assert.deepEqual(loadSearchPlugins(path.join(tmp, 'missing')), []);
+    const r = await search([], 'sonic', plugins);
+    assert.equal(r.items[0].title, 'sonic.zip');
+    assert.equal(r.items[0].provider, 'Demo');
+    assert.deepEqual(selectOnlyFromMagnet('magnet:?xt=urn:btih:x&so=0,2,4-6'), [0, 2, 4, 5, 6]);
+    assert.equal(selectOnlyFromMagnet('magnet:?xt=urn:btih:x'), null);
+    assert.deepEqual(parseLinks(r.items[0].magnet)[0].selectedFiles, [7]);
+    ok('search plugins from the profile folder (broken ones skipped), magnet so= picks files');
   }
 
   // ---- scheduler + categories + per-item options (no network) ----

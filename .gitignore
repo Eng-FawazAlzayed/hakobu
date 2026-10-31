@@ -4,3 +4,4 @@ dist/
 # personal / local-only
 debrid-hosts-report.md
 handover/
+private/

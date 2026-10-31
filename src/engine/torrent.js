@@ -31,6 +31,12 @@ function describeClient(peerIdHex) {
   return `${CLIENTS[m[1]] || m[1]} ${version}`;
 }
 
+// A second peer's file list can finish hashing after the torrent was removed; WebTorrent then crashes
+// on its destroyed client. Drop those pending listeners first.
+function detachMetadata(t) {
+  for (const w of t.wires || []) w.ut_metadata?.removeAllListeners('metadata');
+}
+
 class TorrentEngine {
   constructor() {
     this.client = null;
@@ -88,7 +94,8 @@ class TorrentEngine {
     };
 
     const metadata = () => {
-      item.name = t.name;
+      // one file picked out of a big collection: name the download after that file
+      item.name = sel?.size === 1 && t.files[[...sel][0]] ? t.files[[...sel][0]].name : t.name;
       item.size = t.length;
       item.infoHash = t.infoHash;
       item.torrentB64 = Buffer.from(t.torrentFile).toString('base64');
@@ -97,7 +104,11 @@ class TorrentEngine {
       onMetadata?.(t);
     };
     t.once('ready', () => {
-      if (sel) t.files.forEach((f, i) => (sel.has(i) ? f.select() : f.deselect()));
+      // Deselect first: deselecting a file drops every piece it touches, including pieces it shares with a wanted file.
+      if (sel) {
+        t.files.forEach((f, i) => !sel.has(i) && f.deselect());
+        t.files.forEach((f, i) => sel.has(i) && f.select());
+      }
       t._hakobuCheck();
     });
     if (t.metadata) metadata();
@@ -147,6 +158,7 @@ class TorrentEngine {
       }
       const finish = (err, info) => {
         clearTimeout(timer);
+        detachMetadata(t);
         this.client.remove(t, { destroyStore: true }, () => {});
         err ? reject(err) : resolve(info);
       };
@@ -227,6 +239,7 @@ class TorrentEngine {
     if (!t) return;
     this.captureResume(id);
     this.active.delete(id);
+    detachMetadata(t);
     await new Promise(resolve => this.client.remove(t, { destroyStore: false }, () => resolve()));
   }
 

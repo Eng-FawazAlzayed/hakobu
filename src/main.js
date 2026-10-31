@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { Manager, DEFAULT_SETTINGS, loadItems } = require('./engine/manager');
 const { parseLinks } = require('./linkparse');
-const { FeedService, search, resolveTorrentLink } = require('./engine/feeds');
+const { FeedService, search, loadSearchPlugins, resolveTorrentLink } = require('./engine/feeds');
 const { LocalApi } = require('./engine/api');
 const { checkLinks, packageName } = require('./engine/linkcheck');
 const { HosterRegistry } = require('./engine/hosters');
@@ -326,7 +326,7 @@ function registerIpc() {
   ipcMain.handle('peers', (_e, id) => manager.peers(id));
   ipcMain.handle('trackers', (_e, id) => manager.trackers(id));
   ipcMain.handle('resolveLink', (_e, url) => resolveTorrentLink(url));
-  ipcMain.handle('search', (_e, q) => search(manager.settings.searchProviders || [], q));
+  ipcMain.handle('search', (_e, q) => search(manager.settings.searchProviders || [], q, loadSearchPlugins(userFile('plugins'))));
   ipcMain.handle('feeds', () => feeds.state());
   ipcMain.handle('feedAdd', (_e, url, refreshMin) => feeds.addFeed(url, refreshMin));
   ipcMain.handle('feedUpdate', (_e, id, patch) => feeds.updateFeed(id, patch));
