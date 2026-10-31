@@ -5,6 +5,7 @@ import app.hakobu.core.debrid.RealDebrid
 import app.hakobu.core.debrid.TorBox
 import app.hakobu.core.debrid.TorrentJob
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,6 +25,9 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Base64
 import java.util.UUID
 
@@ -70,7 +74,10 @@ class DownloadManager(
     private val tickMs: Long = 500,
 ) {
     private val state = Dispatchers.IO.limitedParallelism(1)
-    private val scope = CoroutineScope(SupervisorJob() + state)
+    // A bug or a full disk in one job must not take the whole app down: log it and keep going.
+    private val scope = CoroutineScope(SupervisorJob() + state + CoroutineExceptionHandler { _, e ->
+        System.err.println("Hakobu: background task failed: $e")
+    })
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private val limiter = RateLimiter(initialSettings.speedLimitKB * 1024L)
@@ -92,9 +99,7 @@ class DownloadManager(
     val checker by lazy { LinkChecker(engine, RealDebrid("", client), hosters) }
 
     suspend fun start() = withContext(state) {
-        stateFile?.takeIf { it.exists() }?.let { f ->
-            runCatching { json.decodeFromString<SavedState>(f.readText()) }.getOrNull()?.items?.forEach { items[it.id] = it }
-        }
+        stateFile?.let { f -> loadState(f)?.items?.forEach { items[it.id] = it } }
         for (it in items.values) {
             if (it.status == Status.ACTIVE || it.status == Status.RESOLVING) it.status = Status.QUEUED
             it.speed = 0
@@ -436,15 +441,45 @@ class DownloadManager(
         _items.value = items.values.map { it.copy() }.sortedByDescending { it.createdAt }
     }
 
-    private fun save() {
-        dirty = false
-        lastSave = System.currentTimeMillis()
-        val f = stateFile ?: return
+    /**
+     * Read the saved list. A file that can't be parsed is kept as downloads.json.corrupt (instead of being
+     * overwritten by the next save), and the temp copy from an interrupted save is used when it is complete.
+     */
+    private fun loadState(f: File): SavedState? {
         val tmp = File(f.path + ".tmp")
-        tmp.writeText(json.encodeToString(SavedState.serializer(), SavedState(items.values.toList())))
-        if (!tmp.renameTo(f)) {
-            f.delete()
-            tmp.renameTo(f)
+        fun parse(file: File) = runCatching { json.decodeFromString<SavedState>(file.readText()) }.getOrNull()
+        if (!f.exists()) return if (tmp.exists()) parse(tmp) else null
+        parse(f)?.let { return it }
+        runCatching { f.copyTo(File(f.path + ".corrupt"), overwrite = true) }
+        corruptStateKept = true
+        return if (tmp.exists()) parse(tmp) else null
+    }
+
+    /** True when the saved list was damaged at start; the old file is kept as downloads.json.corrupt. */
+    var corruptStateKept = false
+        private set
+
+    /** Last save failure (e.g. storage full), or null. The list stays unsaved-but-dirty and is retried. */
+    var saveError: String? = null
+        private set
+
+    private fun save() {
+        lastSave = System.currentTimeMillis()
+        val f = stateFile ?: run { dirty = false; return }
+        try {
+            val tmp = File(f.path + ".tmp")
+            tmp.writeText(json.encodeToString(SavedState.serializer(), SavedState(items.values.toList())))
+            try {
+                Files.move(tmp.toPath(), f.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (e: Exception) {
+                Files.move(tmp.toPath(), f.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            dirty = false
+            saveError = null
+        } catch (e: IOException) {
+            // Storage full or the disk is unavailable: keep running, keep the list in memory, try again later.
+            dirty = true
+            saveError = e.message ?: e.javaClass.simpleName
         }
     }
 

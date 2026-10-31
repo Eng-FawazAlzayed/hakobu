@@ -112,10 +112,9 @@ class DownloadService : Service() {
 
     /** Android 15 caps dataSync services at 6 hours a day: pause everything cleanly when told to stop. */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        scope.launch {
-            hakobu.manager.pauseAll()
-            stop()
-        }
+        // The system only waits a few seconds here: leave the foreground first, then pause in the app's own scope.
+        stop()
+        hakobu.scope.launch { hakobu.manager.pauseAll() }
     }
 
     override fun onDestroy() {

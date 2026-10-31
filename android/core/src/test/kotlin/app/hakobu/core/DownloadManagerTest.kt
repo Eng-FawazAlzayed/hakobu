@@ -242,4 +242,25 @@ class DownloadManagerTest {
         assertEquals("Converting to MP3", MediaFormats.stageOf("[ExtractAudio] Destination: a.mp3"))
         assertEquals("Item 3 of 12", MediaFormats.itemOf("[download] Downloading item 3 of 12"))
     }
+    @Test
+    fun damagedStateIsKeptAndSaveFailuresDontCrash() = runBlocking {
+        val state = File(tmp, "state.json")
+        state.writeText("""{"items":[{"id":"x" """) // cut off mid-write
+        val m = manager()
+        m.start()
+        assertTrue(m.corruptStateKept)
+        assertTrue(File(tmp, "state.json.corrupt").readText().startsWith("""{"items""""))
+        m.close()
+        // Make every save fail: the state file's path is now a non-empty directory.
+        state.delete()
+        File(state, "block").apply { parentFile.mkdirs(); writeText("x") }
+        val m2 = manager()
+        m2.start()
+        m2.add(listOf(AddRequest(link("/missing"))))
+        m2.waitFor("the failed save to be recorded", 5_000) { m2.saveError != null }
+        // The manager is still alive: it keeps scheduling and publishing.
+        m2.add(listOf(AddRequest(link("/missing"))))
+        m2.waitFor("two items", 5_000) { it.size == 2 }
+        m2.close() // must not throw either
+    }
 }

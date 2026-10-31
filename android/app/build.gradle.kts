@@ -12,8 +12,8 @@ android {
         applicationId = "app.hakobu.android"
         minSdk = 29 // Android 10: MediaStore Downloads, so files land in Download/Hakobu without storage permissions
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.0"
+        versionCode = 6
+        versionName = "0.3.1"
         // yt-dlp ships Python and ffmpeg per CPU type; phones from the last decade are arm64 or armv7.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
