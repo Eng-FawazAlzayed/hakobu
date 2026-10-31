@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A box with a down arrow: Hakobu (運ぶ, "to carry"). Drawn inside the 66dp safe zone of the 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,28 L54,28 C56.2,28 58,29.8 58,32 L58,52 L65.2,44.8 C66.8,43.2 69.3,43.2 70.9,44.8 C72.5,46.4 72.5,48.9 70.9,50.5 L56.8,64.6 C55.2,66.2 52.8,66.2 51.2,64.6 L37.1,50.5 C35.5,48.9 35.5,46.4 37.1,44.8 C38.7,43.2 41.2,43.2 42.8,44.8 L50,52 L50,32 C50,29.8 51.8,28 54,28 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M32,62 C34.2,62 36,63.8 36,66 L36,72 L72,72 L72,66 C72,63.8 73.8,62 76,62 C78.2,62 80,63.8 80,66 L80,76 C80,78.2 78.2,80 76,80 L32,80 C29.8,80 28,78.2 28,76 L28,66 C28,63.8 29.8,62 32,62 Z" />
+</vector>
