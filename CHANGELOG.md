@@ -2,6 +2,12 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+- Plugin sources: a plugin can add its own entry under Source in the sidebar, with a grid of categories (for example consoles), a file list to tick from, and a Start button.
+- Settings → Plugins: add a plugin file, switch plugins on and off, remove them (they go to the Recycle Bin), and open the plugins folder.
+
 ## [0.1.1] - 2026-10-31
 
 ### Added

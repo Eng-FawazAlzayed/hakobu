@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { Manager, DEFAULT_SETTINGS, loadItems } = require('./engine/manager');
 const { parseLinks } = require('./linkparse');
-const { FeedService, search, loadSearchPlugins, resolveTorrentLink } = require('./engine/feeds');
+const { FeedService, search, loadPlugins, loadSearchPlugins, resolveTorrentLink } = require('./engine/feeds');
 const { LocalApi } = require('./engine/api');
 const { checkLinks, packageName } = require('./engine/linkcheck');
 const { HosterRegistry } = require('./engine/hosters');
@@ -326,7 +326,50 @@ function registerIpc() {
   ipcMain.handle('peers', (_e, id) => manager.peers(id));
   ipcMain.handle('trackers', (_e, id) => manager.trackers(id));
   ipcMain.handle('resolveLink', (_e, url) => resolveTorrentLink(url));
-  ipcMain.handle('search', (_e, q) => search(manager.settings.searchProviders || [], q, loadSearchPlugins(userFile('plugins'))));
+  const pluginDir = () => userFile('plugins');
+  const offPlugins = () => manager.settings.disabledPlugins || [];
+  ipcMain.handle('search', (_e, q) => search(manager.settings.searchProviders || [], q, loadSearchPlugins(pluginDir(), offPlugins())));
+  const pluginSource = id => {
+    const p = loadPlugins(pluginDir(), offPlugins()).find(x => x.id === id && x.source);
+    if (!p) throw new Error('That plugin is turned off or no longer in the plugins folder');
+    return p.source;
+  };
+  ipcMain.handle('sources', () => loadPlugins(pluginDir(), offPlugins()).filter(p => p.source).map(p => ({ id: p.id, title: p.source.title || p.name, icon: p.source.icon || '' })));
+  // Settings → Plugins: every .js in the folder, including turned-off and broken ones.
+  const pluginList = () => {
+    const off = offPlugins();
+    const on = new Map(loadPlugins(pluginDir()).map(p => [p.id, p]));
+    return [...on.values()].map(p => ({ id: p.id, name: p.source?.title || p.name, search: !!p.search, source: !!p.source, error: p.error || null, enabled: !off.includes(p.id) }));
+  };
+  ipcMain.handle('plugins', pluginList);
+  ipcMain.handle('pluginAdd', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Add a Hakobu plugin', filters: [{ name: 'Hakobu plugin', extensions: ['js'] }], properties: ['openFile', 'multiSelections'] });
+    if (r.canceled) return pluginList();
+    fs.mkdirSync(pluginDir(), { recursive: true });
+    for (const f of r.filePaths) fs.copyFileSync(f, path.join(pluginDir(), path.basename(f)));
+    return pluginList();
+  });
+  // Removing sends the file to the Recycle Bin, so it can be restored.
+  ipcMain.handle('pluginRemove', async (_e, id) => {
+    const p = loadPlugins(pluginDir()).find(x => x.id === id);
+    if (p) await shell.trashItem(p.file);
+    manager.applySettings({ disabledPlugins: offPlugins().filter(x => x !== id) });
+    saveSettings(manager.settings);
+    return pluginList();
+  });
+  ipcMain.handle('pluginToggle', (_e, id, enabled) => {
+    const off = offPlugins().filter(x => x !== id);
+    manager.applySettings({ disabledPlugins: enabled ? off : [...off, id] });
+    saveSettings(manager.settings);
+    return pluginList();
+  });
+  ipcMain.handle('openPluginsDir', () => {
+    fs.mkdirSync(pluginDir(), { recursive: true });
+    return shell.openPath(pluginDir());
+  });
+  ipcMain.handle('sourceCategories', async (_e, id) => (await pluginSource(id).categories?.()) || []);
+  ipcMain.handle('sourceList', (_e, id, cat) => pluginSource(id).list(cat));
+  ipcMain.handle('sourceResolve', (_e, id, picks) => pluginSource(id).resolve(picks));
   ipcMain.handle('feeds', () => feeds.state());
   ipcMain.handle('feedAdd', (_e, url, refreshMin) => feeds.addFeed(url, refreshMin));
   ipcMain.handle('feedUpdate', (_e, id, patch) => feeds.updateFeed(id, patch));

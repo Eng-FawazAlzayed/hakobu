@@ -241,9 +241,18 @@ function torznabUrl(base, apikey, q) {
   return u.href;
 }
 
-// Local search plugins: <profile>/plugins/*.js, each exporting { name, search(query) -> [{ title, magnet?, torrentUrl?, size?, seeders?, selectedFiles? }] }.
-// They live only in the user's own profile folder, are never bundled, and run with the app's rights, like qBittorrent's search plugins.
-function loadSearchPlugins(dir) {
+// Local plugins: <profile>/plugins/*.js. They live only in the user's own profile folder, are never bundled,
+// and run with the app's rights, like qBittorrent's search plugins. A plugin exports any of:
+//   name, search(query) -> [{ title, magnet?, torrentUrl?, size?, seeders?, selectedFiles? }]
+//   source: a catalogue shown in the sidebar under Source {
+//     title, icon (24px stroke SVG shapes, like icons.js),
+//     categories() -> [{ id, name, group?, detail?, icon? }],
+//     list(categoryId) -> [{ id, title, size?, detail? }],
+//     resolve([{ id, title, size }]) -> [{ title, magnet, infoHash, selectedFiles?, size? }] }
+// Modules are reloaded when their file changes, so a plugin keeps its caches between calls.
+// Plugins listed in `disabled` (by file name without .js) are skipped; broken ones come back with an error only.
+const pluginCache = new Map(); // file -> { mtimeMs, mod }
+function loadPlugins(dir, disabled = []) {
   let names = [];
   try {
     names = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
@@ -253,15 +262,37 @@ function loadSearchPlugins(dir) {
   const out = [];
   for (const f of names) {
     const file = path.join(dir, f);
+    const id = f.replace(/\.js$/, '');
+    if (disabled.includes(id)) continue;
     try {
-      delete require.cache[require.resolve(file)];
-      const p = require(file);
-      if (typeof p.search === 'function') out.push({ name: p.name || f.replace(/\.js$/, ''), search: p.search, plugin: true });
+      const { mtimeMs } = fs.statSync(file);
+      let hit = pluginCache.get(file);
+      if (!hit || hit.mtimeMs !== mtimeMs) {
+        delete require.cache[require.resolve(file)];
+        hit = { mtimeMs, mod: require(file) };
+        pluginCache.set(file, hit);
+      }
+      const p = hit.mod;
+      out.push({
+        id,
+        file,
+        name: p.name || id,
+        search: typeof p.search === 'function' ? p.search : null,
+        source: p.source && typeof p.source.list === 'function' && typeof p.source.resolve === 'function' ? p.source : null,
+      });
     } catch (e) {
-      console.warn('search plugin failed to load:', f, e.message);
+      pluginCache.delete(file);
+      console.warn('plugin failed to load:', f, e.message);
+      out.push({ id, file, name: id, search: null, source: null, error: e.message });
     }
   }
   return out;
+}
+
+function loadSearchPlugins(dir, disabled = []) {
+  return loadPlugins(dir, disabled)
+    .filter(p => p.search)
+    .map(p => ({ name: p.name, search: p.search, plugin: true }));
 }
 
 async function search(providers, q, plugins = []) {
@@ -280,4 +311,4 @@ async function search(providers, q, plugins = []) {
   return { items, errors };
 }
 
-module.exports = { parseFeed, matcher, ruleMatches, FeedService, search, loadSearchPlugins, resolveTorrentLink };
+module.exports = { parseFeed, matcher, ruleMatches, FeedService, search, loadPlugins, loadSearchPlugins, resolveTorrentLink };

@@ -41,6 +41,7 @@
       <button data-filter="p2p"><svg data-icon="magnet"></svg><span>Torrents</span><b></b></button>
       <button data-filter="debrid"><svg data-icon="cloud"></svg><span>Debrid</span><b></b></button>
       <button data-filter="media"><svg data-icon="youtube"></svg><span>YouTube &amp; media</span><b></b></button>
+      <div id="srcFilters"></div>
       <div id="catFilters"></div>
     </div>
 
@@ -165,6 +166,31 @@
           <div class="empty-art"><svg data-icon="search"></svg></div>
           <h2>Search torrents</h2>
           <p>Uses Torznab, the same thing qBittorrent's Jackett plugin uses. Add your Jackett or Prowlarr URL under Settings → Search providers.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Plugin source (e.g. a ROM archive) ================= -->
+    <section id="view-source" class="view hidden">
+      <div class="src-head">
+        <button class="btn ghost sm src-back hidden" id="srcBack"><svg data-icon="chevron"></svg><span id="srcBackLabel">Back</span></button>
+        <span class="muted" id="srcInfo"></span>
+        <span class="grow"></span>
+        <div class="search"><svg data-icon="search"></svg><input id="srcFilter" type="search" placeholder="Filter" /></div>
+      </div>
+      <div class="src-tools hidden" id="srcTools">
+        <span class="check" id="srcAll" title="Select all shown"><svg data-icon="check"></svg></span>
+        <span class="muted" id="srcSel"></span>
+        <span class="grow"></span>
+        <button class="btn primary" id="srcStart" disabled><svg data-icon="download"></svg>Start</button>
+      </div>
+      <div class="list-wrap">
+        <div class="src-grid" id="srcGrid"></div>
+        <div class="results" id="srcRows"></div>
+        <div id="srcEmpty" class="empty small hidden">
+          <div class="empty-art"><svg data-icon="archive"></svg></div>
+          <h2 id="srcEmptyTitle">Loading…</h2>
+          <p id="srcEmptyText"></p>
         </div>
       </div>
     </section>
@@ -315,6 +341,16 @@
           <div class="hrow"><input id="provUrl" placeholder="http://localhost:9117/api/v2.0/indexers/all/results/torznab" /><input id="provKey" placeholder="API key" style="max-width:140px" /><button type="button" class="btn ghost sq" id="provAdd"><svg data-icon="plus"></svg></button></div>
         </div>
         <div class="card">
+          <h3><svg data-icon="layers"></svg>Plugins</h3>
+          <p class="hint">Plugins add search results or a source under Source in the sidebar. They're .js files that run with Hakobu's own rights, so only add ones you trust. Removing a plugin sends it to the Recycle Bin.</p>
+          <div class="mini-list" id="plugList"></div>
+          <div class="hrow">
+            <button type="button" class="btn ghost" id="plugAdd"><svg data-icon="plus"></svg>Add plugin…</button>
+            <button type="button" class="btn ghost" id="plugDir"><svg data-icon="folder"></svg>Open plugins folder</button>
+            <button type="button" class="btn ghost" id="plugReload"><svg data-icon="refresh"></svg>Reload</button>
+          </div>
+        </div>
+        <div class="card">
           <h3><svg data-icon="cloud"></svg>Debrid</h3>
           <label class="field"><span>Preferred provider</span>
             <select name="preferredDebrid"><option value="torbox">TorBox</option><option value="realdebrid">Real-Debrid</option></select>
@@ -397,5 +433,6 @@
   <script src="renderer.js"></script>
   <script src="torrent-dialog.js"></script>
   <script src="feeds-ui.js"></script>
+  <script src="sources.js"></script>
 </body>
 </html>

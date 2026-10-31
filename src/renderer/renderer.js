@@ -14,7 +14,7 @@ const history = []; // [down, up] samples for the sparkline
 const PROVIDER = { torbox: 'TorBox', realdebrid: 'Real-Debrid' };
 const TYPE_ICON = { direct: 'globe', p2p: 'magnet', torbox: 'cloud', realdebrid: 'cloud', ytdlp: 'youtube' };
 const mediaLabel = it => (it.mediaFormat === 'mp3' ? `MP3 ${it.mediaQuality || ''}k` : `MP4 ${it.mediaQuality === 'best' ? 'best' : (it.mediaQuality || '') + 'p'}`);
-const VIEW_TITLE = { downloads: 'Downloads', grabber: 'LinkGrabber', search: 'Search', rss: 'RSS', settings: 'Settings' };
+const VIEW_TITLE = { downloads: 'Downloads', grabber: 'LinkGrabber', search: 'Search', rss: 'RSS', settings: 'Settings', source: '' };
 let detailTab = 'general';
 let detailKey = '';
 let limitsAlt = false;
@@ -561,6 +561,11 @@ function showView(name) {
   $$('.view').forEach(v => v.classList.toggle('hidden', v.id !== 'view-' + name));
   $('#viewTitle').textContent = VIEW_TITLE[name];
   $('.topbar .search').style.visibility = name === 'downloads' ? 'visible' : 'hidden';
+  // Leaving a plugin source: the sidebar highlight goes back to the current download filter.
+  if (name !== 'source' && $('#filters button[data-source].active')) {
+    $$('#filters button').forEach(x => x.classList.toggle('active', x.dataset.filter === filter));
+    moveIndicator('#filters');
+  }
   if (name !== 'downloads') clearTimeout(peerTimer);
   window.onViewShown?.(name);
   if (name === 'settings') fillSettings();

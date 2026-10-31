@@ -117,3 +117,33 @@
 
 .x { display: grid; place-items: center; width: 28px; height: 28px; border: none; border-radius: 8px; background: none; color: var(--text-3); transition: background var(--fast), color var(--fast); }
 .x:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+
+/* ---- plugin sources (platform tiles -> file list) ---- */
+.src-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; min-height: 34px; }
+.src-head .search { width: 260px; }
+.src-back .ico { transform: rotate(90deg); }
+.src-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 0 14px 0 12px; }
+.src-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 10px; }
+.src-grid:empty { display: none; }
+.src-group { grid-column: 1 / -1; padding: 14px 2px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.src-group:first-child { padding-top: 2px; }
+.src-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px 14px; min-width: 0;
+  border-radius: var(--r); background: var(--surface); border: 1px solid var(--border); color: var(--text-2); font: inherit; cursor: pointer;
+  transition: background var(--fast) var(--ease), border-color var(--med) var(--ease), box-shadow var(--med) var(--ease), transform var(--med) var(--spring), color var(--fast);
+  animation: rowIn var(--slow) var(--ease) backwards;
+}
+.src-tile:hover { background: var(--surface-2); border-color: var(--border-2); color: var(--text); transform: translateY(-2px); box-shadow: var(--shadow); }
+.src-tile:active { transform: scale(0.97); }
+.src-tile .art { display: grid; place-items: center; width: 58px; height: 58px; margin-bottom: 2px; border-radius: 18px; background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-2) 14%, transparent)); border: 1px solid var(--border); transition: transform var(--med) var(--spring); }
+.src-tile:hover .art { transform: scale(1.06) rotate(-3deg); }
+.src-tile .art .ico { width: 32px; height: 32px; color: var(--accent); stroke-width: 1.6; }
+.src-tile strong { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.25; }
+.src-tile small { font-size: 11px; color: var(--text-3); }
+.src-row { grid-template-columns: 24px minmax(0, 1fr) auto; cursor: pointer; }
+.src-row .size { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+html.idle .src-tile, html.idle .src-tile .art { transition: none; }
+.mini.plug { padding: 8px 6px 8px 10px; }
+.plug-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plug-name .muted, .plug-name .err { font-size: 11.5px; }
+.plug-name .err { color: var(--red); }

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { parseFeed, matcher, ruleMatches, FeedService, search, loadSearchPlugins, resolveTorrentLink } = require('../src/engine/feeds.js');
+const { parseFeed, matcher, ruleMatches, FeedService, search, loadPlugins, loadSearchPlugins, resolveTorrentLink } = require('../src/engine/feeds.js');
 const { parseLinks, selectOnlyFromMagnet } = require('../src/linkparse.js');
 const { Manager } = require('../src/engine/manager.js');
 const ok = msg => console.log('  ✓', msg);
@@ -143,6 +143,19 @@ try {
     assert.equal(selectOnlyFromMagnet('magnet:?xt=urn:btih:x'), null);
     assert.deepEqual(parseLinks(r.items[0].magnet)[0].selectedFiles, [7]);
     ok('search plugins from the profile folder (broken ones skipped), magnet so= picks files');
+
+    fs.writeFileSync(
+      path.join(dir, 'shelf.js'),
+      `let calls = 0; module.exports = { source: { title: 'Shelf', categories: () => [{ id: 'a', name: 'A' }], list: async () => [{ id: String(++calls), title: 'x.zip' }], resolve: async p => p } };`
+    );
+    const srcs = loadPlugins(dir).filter(p => p.source);
+    assert.deepEqual(srcs.map(p => [p.id, p.source.title]), [['shelf', 'Shelf']]);
+    assert.equal((await srcs[0].source.list('a'))[0].id, '1');
+    assert.equal((await loadPlugins(dir).find(p => p.id === 'shelf').source.list('a'))[0].id, '2', 'unchanged plugin keeps its state');
+    assert.deepEqual(loadSearchPlugins(dir).map(p => p.name), ['Demo'], 'source-only plugins stay out of search');
+    assert.deepEqual(loadPlugins(dir, ['shelf']).map(p => p.id).sort(), ['broken', 'demo'], 'turned-off plugins are skipped');
+    assert.ok(loadPlugins(dir).find(p => p.id === 'broken').error, 'broken plugins are listed with their error');
+    ok('plugin sources (sidebar catalogues) load and keep their state while the file is unchanged; plugins can be turned off');
   }
 
   // ---- scheduler + categories + per-item options (no network) ----

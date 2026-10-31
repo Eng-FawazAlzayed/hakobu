@@ -37,6 +37,24 @@ function icon(name, cls = '') {
   return `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 }
 
+// Icons supplied by plugins: only plain shapes with geometry attributes survive, anything else falls back.
+const SVG_TAGS = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'g']);
+const SVG_ATTRS = new Set(['d', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'points', 'transform']);
+function svgIcon(markup, fallback = 'archive', cls = '') {
+  const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${markup || ''}</svg>`, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) return icon(fallback, cls);
+  const clean = el =>
+    [...el.children]
+      .filter(c => SVG_TAGS.has(c.localName))
+      .map(c => {
+        const attrs = [...c.attributes].filter(a => SVG_ATTRS.has(a.name) && /^[\w\s.,()-]*$/.test(a.value)).map(a => ` ${a.name}="${a.value}"`);
+        return `<${c.localName}${attrs.join('')}>${clean(c)}</${c.localName}>`;
+      })
+      .join('');
+  const inner = clean(doc.documentElement);
+  return inner ? `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>` : icon(fallback, cls);
+}
+
 function hydrateIcons(root = document) {
   for (const el of root.querySelectorAll('svg[data-icon]')) {
     el.setAttribute('viewBox', '0 0 24 24');
