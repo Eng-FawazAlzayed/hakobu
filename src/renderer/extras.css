@@ -221,3 +221,17 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 .sd-desc { font-size: 14px; line-height: 1.6; color: var(--text-2); }
 .sd-desc p { margin: 0 0 10px; }
 .sd-panel > * { flex-shrink: 0; } /* the panel scrolls; its rows keep their height */
+
+/* detail page: per-file downloads with a host picker */
+.sd-dl { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--border); }
+.sd-dl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.sd-dl-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.sd-dl-head label { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.sd-dl-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 150px; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); opacity: 0.6; transition: opacity var(--fast), border-color var(--fast); }
+.sd-dl-row.on { opacity: 1; border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.sd-dl-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sd-dl-name b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-dl-name small { font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-dl select { height: 32px; }
+.sd-dl .hrow { margin-top: 6px; align-items: center; }
+.sd-dl .hrow .muted { font-size: 12px; }

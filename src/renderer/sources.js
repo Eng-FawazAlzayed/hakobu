@@ -337,6 +337,51 @@ const paragraphs = t =>
     .filter(Boolean)
     .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)
     .join('');
+// Rows can list their files with a choice of mirrors: downloads: [{ label, note?, selected?, mirrors: [{ name, url }] }].
+// The detail page then shows a tick box and a host picker per file; the last host picked is remembered per source.
+const hostKey = () => `srcHost:${srcState.id}`;
+const preferredHost = () => {
+  try {
+    return localStorage.getItem(hostKey()) || '';
+  } catch {
+    return '';
+  }
+};
+function dlState(r) {
+  if (!r._dl) {
+    const pref = preferredHost();
+    r._dl = (r.downloads || []).map(d => ({ on: d.selected !== false, host: (d.mirrors.find(m => m.name === pref) || d.mirrors[0])?.name }));
+  }
+  return r._dl;
+}
+function downloadsHtml(r) {
+  const files = r.downloads || [];
+  if (!files.length) return '';
+  const st = dlState(r);
+  const hosts = [...new Set(files.flatMap(d => d.mirrors.map(m => m.name)))];
+  const n = st.filter(s => s.on).length;
+  return `<div class="sd-dl">
+      <div class="sd-dl-head"><h3>Downloads</h3><span class="grow"></span>
+        <label class="muted">Host for all <select data-dl-all><option value="">Pick…</option>${hosts.map(h => `<option>${esc(h)}</option>`).join('')}</select></label></div>
+      ${files
+        .map((d, i) => `<div class="sd-dl-row${st[i].on ? ' on' : ''}">
+          <span class="check${st[i].on ? ' on' : ''}" data-dl-tick="${i}">${icon('check')}</span>
+          <div class="sd-dl-name"><b>${esc(d.label)}</b>${d.note ? `<small>${esc(d.note)}</small>` : ''}</div>
+          <select data-dl-host="${i}">${d.mirrors.map(m => `<option${m.name === st[i].host ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+        </div>`)
+        .join('')}
+      <div class="hrow end"><span class="muted">File hosts go through LinkGrabber; most need TorBox or Real-Debrid.</span><span class="grow"></span>
+        <button type="button" class="btn primary" data-sd="dl"${n ? '' : ' disabled'}>${icon('download')}Download ${n} file${n === 1 ? '' : 's'}</button></div>
+    </div>`;
+}
+async function downloadPicked(r) {
+  const st = dlState(r);
+  const links = (r.downloads || []).map((d, i) => st[i].on && d.mirrors.find(m => m.name === st[i].host)?.url).filter(Boolean);
+  if (!links.length) return;
+  addToGrabber((await api.parse(links.join('\n'))).map(e => ({ ...e, package: r.label || r.title, autoPackage: r.label || r.title })), false);
+  toast('ok', `${links.length} file${links.length > 1 ? 's' : ''} sent to LinkGrabber`, `${r.label || r.title}: check them there and press Start.`);
+}
+
 function renderSrcDetail(r, loading) {
   const [cover] = artList(r);
   const on = srcState.picked.has(r.id);
@@ -358,6 +403,7 @@ function renderSrcDetail(r, loading) {
           </div>
         </div>
       </div>
+      ${downloadsHtml(r)}
       ${shots.length ? `<div class="sd-shots">${shots.map(u => `<img loading="lazy" alt="" src="${esc(u)}" />`).join('')}</div>` : ''}
       <div class="sd-desc">${loading ? '<span class="spinner sm"></span> Loading details…' : paragraphs(r.description) || '<p class="muted">No description.</p>'}</div>
     </div>`;
@@ -384,8 +430,18 @@ const closeSrcDetail = () => {
 };
 $('#srcDetail').addEventListener('click', e => {
   if (e.target === e.currentTarget || e.target.closest('.sd-close')) return closeSrcDetail();
+  const tick = e.target.closest('[data-dl-tick]')?.dataset.dlTick;
+  if (tick !== undefined && detailRow) {
+    const s = dlState(detailRow)[tick];
+    s.on = !s.on;
+    return renderSrcDetail(detailRow);
+  }
   const act = e.target.closest('[data-sd]')?.dataset.sd;
   if (!act || !detailRow) return;
+  if (act === 'dl' || (act === 'get' && detailRow.downloads?.length)) {
+    downloadPicked(detailRow);
+    return closeSrcDetail();
+  }
   if (act === 'get') {
     startSrcPicked([detailRow]);
     return closeSrcDetail();
@@ -393,6 +449,22 @@ $('#srcDetail').addEventListener('click', e => {
   srcState.picked.has(detailRow.id) ? srcState.picked.delete(detailRow.id) : srcState.picked.add(detailRow.id);
   renderSrcDetail(detailRow);
   renderSrcRows();
+});
+$('#srcDetail').addEventListener('change', e => {
+  if (!detailRow) return;
+  const sel = e.target.closest('select');
+  if (!sel) return;
+  const st = dlState(detailRow);
+  const host = sel.value;
+  if (sel.matches('[data-dl-all]')) {
+    if (!host) return;
+    // every file that has this host switches to it; the others keep theirs
+    detailRow.downloads.forEach((d, i) => d.mirrors.some(m => m.name === host) && (st[i].host = host));
+  } else st[sel.dataset.dlHost].host = host;
+  try {
+    localStorage.setItem(hostKey(), host);
+  } catch {}
+  renderSrcDetail(detailRow);
 });
 $('#srcDetail').addEventListener('error', e => e.target.matches?.('.sd-shots img') && e.target.remove(), true);
 document.addEventListener('keydown', e => e.key === 'Escape' && detailRow && closeSrcDetail());

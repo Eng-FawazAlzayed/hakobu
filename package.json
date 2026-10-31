@@ -1,7 +1,7 @@
 {
   "name": "hakobu",
   "productName": "Hakobu",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Hakobu (運ぶ, \"to carry\"): direct downloads, torrents, YouTube & media, with TorBox / Real-Debrid support",
   "main": "src/main.js",
   "type": "commonjs",

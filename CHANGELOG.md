@@ -2,6 +2,11 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.4] - 2026-11-01
+
+### Added
+- Detail pages can list a title's files (game, updates, DLC) with a tick box and a file-host picker each, plus "Host for all"; the last host picked is remembered per source, and the picks go to LinkGrabber.
+
 ## [0.3.3] - 2026-11-01
 
 ### Fixed
