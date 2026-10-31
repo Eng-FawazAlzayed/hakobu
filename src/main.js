@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, Notification, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { Manager, DEFAULT_SETTINGS, loadItems } = require('./engine/manager');
+const { Manager, DEFAULT_SETTINGS, loadItems, readJsonSafe } = require('./engine/manager');
 const { parseLinks } = require('./linkparse');
 const { FeedService, search, loadPlugins, loadSearchPlugins, resolveTorrentLink } = require('./engine/feeds');
 const { LocalApi } = require('./engine/api');
@@ -78,11 +78,11 @@ const userFile = name => path.join(app.getPath('userData'), name);
 
 // ---------- settings with API keys encrypted by the OS (DPAPI on Windows) ----------
 
+// Files that were unreadable at start; their copies are kept and the user is told once the window is up.
+const corruptFiles = [];
+
 function loadSettings() {
-  let raw = {};
-  try {
-    raw = JSON.parse(fs.readFileSync(userFile('settings.json'), 'utf8'));
-  } catch {}
+  const raw = readJsonSafe(userFile('settings.json'), backup => corruptFiles.push(backup)) || {};
   for (const k of SECRET_KEYS) {
     if (typeof raw[k] === 'string' && raw[k].startsWith('enc:')) {
       try {
@@ -100,7 +100,19 @@ function saveSettings(settings) {
   if (safeStorage.isEncryptionAvailable()) {
     for (const k of SECRET_KEYS) if (out[k]) out[k] = 'enc:' + safeStorage.encryptString(out[k]).toString('base64');
   }
-  fs.writeFileSync(userFile('settings.json'), JSON.stringify(out, null, 2));
+  // Write a temp file and rename it over the old one, so a crash or power cut mid-write can't leave half a file.
+  const file = userFile('settings.json');
+  fs.writeFileSync(file + '.tmp', JSON.stringify(out, null, 2));
+  for (let i = 1; ; i++) {
+    try {
+      fs.renameSync(file + '.tmp', file);
+      return;
+    } catch (e) {
+      // Windows: antivirus or OneDrive can hold the file for a moment
+      if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * i);
+    }
+  }
 }
 
 // ---------- link intake (magnet:// handler, .torrent files, clipboard) ----------
@@ -198,8 +210,12 @@ function createWindow() {
   win.on('restore', resync);
   win.on('show', resync);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.on('closed', () => (win = null));
   win.webContents.on('did-finish-load', () => {
     if (pendingGrab.length) win.webContents.send('grab', pendingGrab.splice(0));
+    for (const backup of corruptFiles.splice(0)) {
+      win.webContents.send('toast', { kind: 'err', title: `${path.basename(backup).replace(/\.corrupt-.*$/, '')} was damaged`, text: `Hakobu started fresh and kept the old file as ${path.basename(backup)}.` });
+    }
     if (process.env.HAKOBU_SHOT) runScreenshots();
   });
   // Never navigate the app window; open external links in the browser instead.
@@ -459,7 +475,7 @@ app.whenReady().then(async () => {
   hosters = new HosterRegistry(userFile('hosters.json'));
   hosters.refresh().catch(() => {});
   setInterval(() => hosters.refresh().catch(() => {}), 6 * 3600 * 1000);
-  manager = new Manager({ statePath: userFile('downloads.json'), settings, items: loadItems(userFile('downloads.json')), hosters, tools });
+  manager = new Manager({ statePath: userFile('downloads.json'), settings, items: loadItems(userFile('downloads.json'), backup => corruptFiles.push(backup)), hosters, tools });
   await manager.init();
   manager.on('limits', alt => win?.webContents.send('limits', alt));
   manager.on('extracted', (it, st) => win?.webContents.send('toast', { kind: 'ok', title: 'Extracted', text: path.basename(st.dest || it.name) }));
@@ -536,10 +552,19 @@ app.on('before-quit', async e => {
   if (quitting || !manager) return;
   e.preventDefault();
   quitting = true;
+  // Never let a stuck torrent, socket or disk write keep Hakobu from closing.
+  const cap = new Promise(r => setTimeout(r, 10000));
   try {
     feeds?.stop();
-    await localApi?.stop();
-    await manager.shutdown();
+    await Promise.race([
+      (async () => {
+        await localApi?.stop();
+        await manager.shutdown();
+      })(),
+      cap,
+    ]);
+  } catch (e) {
+    console.error('[quit]', e.message);
   } finally {
     app.quit();
   }

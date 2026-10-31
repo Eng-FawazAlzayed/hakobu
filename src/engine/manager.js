@@ -309,7 +309,7 @@ class Manager extends EventEmitter {
         it.progress = 1;
         it.completedAt = Date.now();
         this.emit('completed', it);
-        this.maybeExtract(it);
+        this.maybeExtract(it).catch(e => console.error('[extract]', e.message));
       })
       .catch(e => {
         if (e.name === 'AbortError') return;
@@ -391,7 +391,7 @@ class Manager extends EventEmitter {
           if (!it.completedAt) {
             it.completedAt = Date.now();
             this.emit('completed', it);
-            this.maybeExtract(it);
+            this.maybeExtract(it).catch(e => console.error('[extract]', e.message));
           }
           it.status = 'seeding';
           this.checkSeedLimit(it);
@@ -399,7 +399,7 @@ class Manager extends EventEmitter {
           this.schedule();
         },
         onError: e => {
-          this.torrents.stop(it.id);
+          this.torrents.stop(it.id).catch(() => {});
           this.fail(it, e);
           this.schedule();
         },
@@ -633,7 +633,7 @@ class Manager extends EventEmitter {
       if (job.time !== hhmm || !(job.days || []).includes(now.getDay())) continue;
       this.emit('scheduled', job);
       if (job.action === 'start') for (const i of this.items.values()) this.resume(i.id);
-      if (job.action === 'pause') for (const i of this.items.values()) if (['active', 'queued', 'resolving'].includes(i.status)) this.pause(i.id);
+      if (job.action === 'pause') for (const i of this.items.values()) if (['active', 'queued', 'resolving'].includes(i.status)) Promise.resolve(this.pause(i.id)).catch(() => {});
       if (job.action === 'turtle-on' || job.action === 'turtle-off') this.applySettings({ altActive: job.action === 'turtle-on' });
     }
   }
@@ -782,23 +782,71 @@ class Manager extends EventEmitter {
     }, 150);
   }
 
-  async save(force = false) {
+  // Saves run one at a time (the 3 s timer, shutdown and others may overlap) and never throw:
+  // a failed write (disk full, file locked by OneDrive or antivirus) keeps the state dirty for the next try.
+  save(force = false) {
+    this.saveChain = (this.saveChain || Promise.resolve()).then(() => this.writeState(force)).catch(e => {
+      this.dirty = true;
+      if (this.lastSaveError !== e.message) console.error('[save]', e.message);
+      this.lastSaveError = e.message;
+    });
+    return this.saveChain;
+  }
+
+  async writeState(force) {
     if (!this.statePath || (!this.dirty && !force)) return;
     this.dirty = false;
     const items = [...this.items.values()].map(({ _last, speed, upSpeed, peers, ...rest }) => rest);
     const tmp = this.statePath + '.tmp';
     await fsp.mkdir(path.dirname(this.statePath), { recursive: true });
     await fsp.writeFile(tmp, JSON.stringify({ items }));
-    await fsp.rename(tmp, this.statePath);
+    await renameRetry(tmp, this.statePath);
+    this.lastSaveError = null;
   }
 }
 
-function loadItems(statePath) {
+// Windows refuses a rename for a moment while another program (antivirus, OneDrive, Explorer) has the file open.
+async function renameRetry(from, to, tries = 5) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fsp.rename(from, to);
+    } catch (e) {
+      if (i >= tries || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e;
+      await new Promise(r => setTimeout(r, 100 * i));
+    }
+  }
+}
+
+// Reads a JSON state file. A file that exists but can't be parsed is kept as "<name>.corrupt-<time>" instead of being
+// overwritten by the next save, and the last good temp copy is used when there is one. onCorrupt(backupPath) reports it.
+function readJsonSafe(file, onCorrupt) {
+  if (!fs.existsSync(file)) {
+    try {
+      return JSON.parse(fs.readFileSync(file + '.tmp', 'utf8')); // a crash between write and rename
+    } catch {
+      return null;
+    }
+  }
   try {
-    return JSON.parse(fs.readFileSync(statePath, 'utf8')).items || [];
-  } catch {
-    return [];
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    const backup = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    try {
+      fs.copyFileSync(file, backup);
+    } catch {}
+    console.error('[state] unreadable', file, e.message);
+    onCorrupt?.(backup);
+    try {
+      return JSON.parse(fs.readFileSync(file + '.tmp', 'utf8'));
+    } catch {
+      return null;
+    }
   }
 }
 
-module.exports = { Manager, DEFAULT_SETTINGS, loadItems };
+function loadItems(statePath, onCorrupt) {
+  const data = readJsonSafe(statePath, onCorrupt);
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
+module.exports = { Manager, DEFAULT_SETTINGS, loadItems, readJsonSafe, renameRetry };

@@ -2,6 +2,15 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.3] - 2026-11-01
+
+### Fixed
+- A download that failed on one connection no longer keeps reconnecting on the others in the background.
+- Extracting a large RAR no longer freezes the window; it runs in its own process.
+- Stopping or removing a torrent that had errored no longer hangs, and quitting never waits more than 10 seconds.
+- A damaged downloads.json or settings.json is kept as a .corrupt copy (and you get a notice) instead of being silently replaced with an empty one. Settings are now saved atomically.
+- Saving the download list retries when Windows briefly locks the file, never overlaps, and no longer gives up silently.
+
 ## [0.3.2] - 2026-11-01
 
 ### Added

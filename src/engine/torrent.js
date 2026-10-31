@@ -159,7 +159,7 @@ class TorrentEngine {
       const finish = (err, info) => {
         clearTimeout(timer);
         detachMetadata(t);
-        this.client.remove(t, { destroyStore: true }, () => {});
+        this.removeTorrent(t, { destroyStore: true });
         err ? reject(err) : resolve(info);
       };
       const timer = setTimeout(() => finish(new Error('No peers sent the file list in time. Try again, or add it to a debrid service.')), timeoutMs);
@@ -240,7 +240,29 @@ class TorrentEngine {
     this.captureResume(id);
     this.active.delete(id);
     detachMetadata(t);
-    await new Promise(resolve => this.client.remove(t, { destroyStore: false }, () => resolve()));
+    await this.removeTorrent(t, { destroyStore: false });
+  }
+
+  // WebTorrent throws (and never calls back) when the torrent is already gone, e.g. after it errored
+  // or was a rejected duplicate. Never let that leave a caller waiting forever.
+  removeTorrent(t, opts) {
+    if (!this.client || !this.client.torrents.includes(t)) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, 5000);
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      try {
+        Promise.resolve(this.client.remove(t, opts, done)).catch(e => {
+          console.error('[torrent] remove:', e.message);
+          done();
+        });
+      } catch (e) {
+        console.error('[torrent] remove:', e.message);
+        done();
+      }
+    });
   }
 
   addPeer(id, addr) {
@@ -251,7 +273,20 @@ class TorrentEngine {
   }
 
   async destroy() {
-    if (this.client) await new Promise(r => this.client.destroy(() => r()));
+    if (!this.client) return;
+    await new Promise(r => {
+      const timer = setTimeout(r, 8000); // a stuck tracker or peer socket must not block quitting
+      try {
+        this.client.destroy(() => {
+          clearTimeout(timer);
+          r();
+        });
+      } catch (e) {
+        console.error('[torrent] destroy:', e.message);
+        clearTimeout(timer);
+        r();
+      }
+    });
   }
 }
 

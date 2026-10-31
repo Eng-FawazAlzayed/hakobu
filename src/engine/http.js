@@ -73,6 +73,9 @@ async function probe(url, headers, signal) {
     const cl = res.headers.get('content-length');
     if (cl) size = Number(cl);
   } else {
+    try {
+      await res.body?.cancel();
+    } catch {}
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }
   try {
@@ -100,6 +103,7 @@ class HttpTask {
     this.limiter = limiter;
     this.connections = connections;
     this.ac = new AbortController();
+    this.retryBaseMs = 750; // first retry delay, doubled after each dead attempt (tests shorten it)
   }
 
   setItemLimiter(l) {
@@ -133,12 +137,29 @@ class HttpTask {
     await fsp.mkdir(it.dir, { recursive: true });
     const partPath = path.join(it.dir, it.filename + '.part');
     const fh = await fsp.open(partPath, fs.existsSync(partPath) ? 'r+' : 'w');
+    // When one connection gives up, stop the others too, and wait for all of them before the file closes.
+    // (Promise.all would close the file while the rest kept reconnecting in the background.)
+    const segAc = new AbortController();
+    const onAbort = () => segAc.abort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    let failure = null;
     try {
-      await Promise.all(it.segments.map(seg => this.runSegment(seg, fh, headers, signal)));
+      await Promise.allSettled(
+        it.segments.map(seg =>
+          this.runSegment(seg, fh, headers, segAc.signal).catch(e => {
+            if (!failure && !signal.aborted) {
+              failure = e;
+              segAc.abort();
+            }
+          })
+        )
+      );
     } finally {
+      signal.removeEventListener('abort', onAbort);
       await fh.close();
     }
     if (signal.aborted) throw abortError();
+    if (failure) throw failure;
     if (it.size == null) it.size = it.downloaded;
     await fsp.rename(partPath, path.join(it.dir, it.filename));
   }
@@ -166,6 +187,11 @@ class HttpTask {
         const h = { 'User-Agent': UA, ...this.headers };
         if (it.resumable) h.Range = `bytes=${from}-${seg.end ?? ''}`;
         const res = await fetch(this.url, { headers: h, signal });
+        if (!(it.resumable ? res.status === 206 : res.ok)) {
+          try {
+            await res.body?.cancel(); // free the connection before retrying
+          } catch {}
+        }
         if ([401, 403, 410].includes(res.status) && this.resolve) {
           await this.refreshLink(signal); // host links expire: get a fresh one and retry
           throw new Error(`HTTP ${res.status} (link refreshed)`);
@@ -195,7 +221,7 @@ class HttpTask {
           it.downloaded -= seg.done;
           seg.done = 0;
         }
-        await sleep(Math.min(15000, 750 * 2 ** (failures - 1)), signal);
+        await sleep(Math.min(15000, this.retryBaseMs * 2 ** (failures - 1)), signal);
       }
     }
   }

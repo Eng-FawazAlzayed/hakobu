@@ -2,7 +2,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, fork } = require('child_process');
 
 // 7za.exe must run from outside app.asar in a packaged build.
 const path7za = () => require('7zip-bin').path7za.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
@@ -52,25 +52,27 @@ function run7z(file, dest, password, onProgress) {
   });
 }
 
-async function runUnrar(file, dest, password, onProgress) {
-  const { createExtractorFromFile } = require('node-unrar-js');
-  try {
-    const extractor = await createExtractorFromFile({ filepath: file, targetPath: dest, password: password || undefined });
-    const list = extractor.getFileList();
-    const headers = [...list.fileHeaders];
-    const total = headers.reduce((a, h) => a + (h.unpSize || 0), 0) || 1;
-    if (headers.some(h => h.flags.encrypted) && !password) throw new PasswordError('Password required');
-    let done = 0;
-    const { files } = extractor.extract();
-    for (const f of files) {
-      done += f.fileHeader.unpSize || 0;
-      onProgress?.(done / total);
-    }
-  } catch (e) {
-    if (e instanceof PasswordError) throw e;
-    if (/password/i.test(e.reason || e.message || '')) throw new PasswordError('Wrong password');
-    throw new Error(e.reason ? `${e.reason}${e.file ? ': ' + e.file : ''}` : e.message);
-  }
+function runUnrar(file, dest, password, onProgress) {
+  return new Promise((resolve, reject) => {
+    // Electron's fork runs the script with its own Node (ELECTRON_RUN_AS_NODE) and can read it from app.asar.
+    const child = fork(path.join(__dirname, 'unrar-worker.js'), [], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true });
+    let settled = false;
+    let stderr = '';
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      err ? reject(err) : resolve();
+    };
+    child.stderr?.on('data', d => (stderr = (stderr + d).slice(-2000)));
+    child.on('message', m => {
+      if (m?.type === 'progress') onProgress?.(m.value);
+      else if (m?.type === 'done') finish();
+      else if (m?.type === 'error') finish(m.password ? new PasswordError(m.message) : new Error(m.message));
+    });
+    child.on('error', e => finish(e));
+    child.on('exit', code => finish(code === 0 ? null : new Error(stderr.trim().split(/\r?\n/).pop() || `RAR extraction stopped (exit ${code})`)));
+    child.send({ file, dest, password });
+  });
 }
 
 // Extract one archive, trying each password. Returns the password that worked.
