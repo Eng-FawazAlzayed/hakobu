@@ -26,14 +26,14 @@ function sanitize(name) {
   return clean || 'download';
 }
 
-// Pick "name (1).ext" if "name.ext" (or its .part) already exists.
-function uniqueName(dir, name, taken = new Set()) {
+// Pick "name (1).ext" if "name.ext" (or its .part) already exists. ignoreDisk: only avoid other downloads' names (overwrite mode).
+function uniqueName(dir, name, taken = new Set(), { ignoreDisk = false } = {}) {
   const ext = path.extname(name);
   const base = name.slice(0, name.length - ext.length);
   let candidate = name;
   for (let i = 1; ; i++) {
     const full = path.join(dir, candidate);
-    if (!taken.has(full.toLowerCase()) && !fs.existsSync(full) && !fs.existsSync(full + '.part')) return candidate;
+    if (!taken.has(full.toLowerCase()) && (ignoreDisk || (!fs.existsSync(full) && !fs.existsSync(full + '.part')))) return candidate;
     candidate = `${base} (${i})${ext}`;
   }
 }

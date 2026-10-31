@@ -1,34 +1,54 @@
-// Built-in resolvers for file hosts that hand out direct links without an account (no debrid needed).
-// Each turns a host's page URL into { url, headers } for the HTTP engine.
+// Built-in host modules (JDownloader's "host plugins"): turn a file host's page link into a direct link for the HTTP
+// engine, list folder links, and use premium accounts where the host has an API.
+// Each module: { id, name, test(host), free, account?, maxDownloads?, maxConnections?, resolve(url, ctx),
+//                check?(url, ctx), crawl?(url, ctx), isFolder?(url), accountInfo?(account, ctx) }
+// ctx = { signal, route, account }
 const { hostOf } = require('./hosters');
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
-
-const RESOLVERS = [
-  {
-    // BuzzHeavier: GET <page>/download as an htmx request; the direct link comes back in the "hx-redirect" header.
-    name: 'BuzzHeavier',
-    test: host => /(^|\.)(buzzheavier\.com|bzzhr\.co)$/.test(host),
-    async resolve(url, signal) {
-      const page = new URL(url);
-      page.hash = '';
-      page.search = '';
-      const base = page.href.replace(/\/+$/, '');
-      const headers = { 'User-Agent': UA, 'HX-Request': 'true', 'HX-Current-URL': base, Referer: base };
-      const res = await fetch(base + '/download', { headers, redirect: 'manual', signal });
-      const link = res.headers.get('hx-redirect') || res.headers.get('location');
-      if (!link) {
-        if (res.status === 404) throw new Error('BuzzHeavier: file not found (deleted or wrong link)');
-        throw new Error(`BuzzHeavier didn't return a download link (HTTP ${res.status})`);
-      }
-      return { url: new URL(link, base).href, headers: { 'User-Agent': UA, Referer: base } };
-    },
-  },
+const HOSTS = [
+  require('./hosts/mega'),
+  require('./hosts/pixeldrain'),
+  require('./hosts/gofile'),
+  require('./hosts/mediafire'),
+  require('./hosts/gdrive'),
+  require('./hosts/onefichier'),
+  require('./hosts/buzzheavier'),
+  ...require('./hosts/premium'),
 ];
 
-const resolverFor = url => {
-  const host = hostOf(url);
-  return host ? RESOLVERS.find(r => r.test(host)) || null : null;
+let accounts = {}; // host id -> { field: value, enabled }
+function setAccounts(a) {
+  accounts = a && typeof a === 'object' ? a : {};
+}
+const accountFor = mod => {
+  const a = mod && accounts[mod.id];
+  return a && a.enabled !== false && mod.account?.fields.every(f => a[f.key]) ? a : null;
 };
 
-module.exports = { resolverFor, RESOLVERS };
+const moduleFor = url => {
+  const host = hostOf(url);
+  return host ? HOSTS.find(r => r.test(host)) || null : null;
+};
+
+// The module that can download this URL right now: a free host, or a premium-only one with an account set up.
+// Returns { name, mod, account, resolve(signal, route) } or null.
+function resolverFor(url) {
+  const mod = moduleFor(url);
+  if (!mod) return null;
+  const account = accountFor(mod);
+  if (!mod.free && !account) return null;
+  return {
+    name: mod.name,
+    id: mod.id,
+    mod,
+    account,
+    premium: !!account,
+    maxDownloads: account ? 0 : mod.maxDownloads || 0,
+    maxConnections: account ? 0 : mod.maxConnections || 0,
+    resolve: (u, signal, route = 0) => mod.resolve(u, { signal, route, account }),
+  };
+}
+
+const isFolderLink = url => !!moduleFor(url)?.isFolder?.(url);
+
+module.exports = { resolverFor, moduleFor, accountFor, setAccounts, isFolderLink, HOSTS, RESOLVERS: HOSTS };

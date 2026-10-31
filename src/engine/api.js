@@ -107,6 +107,7 @@ class LocalApi {
         if (e.kind === 'http' && Object.keys(headers).length) e.headers = headers;
         if (typeof body.filename === 'string' && entries.length === 1) e.suggestedName = body.filename.slice(0, 200);
         if (typeof body.package === 'string') e.package = body.package.slice(0, 200);
+        if (body.dlc === true && e.kind === 'http' && !/\.dlc(?:$|[?#])/i.test(e.source)) e.source += (e.source.includes('#') ? '' : '#') + '.dlc';
       }
       if (entries.length) this.onLinks(entries, { source: 'extension', page: body.page, capture: !!body.capture, referrer: headers.Referer || '' });
       return send(res, 200, { added: entries.length });

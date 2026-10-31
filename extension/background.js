@@ -85,7 +85,9 @@ chrome.downloads.onCreated.addListener(async item => {
   } catch {
     return; // Hakobu not running (or an older Hakobu): let the browser handle it
   }
-  if (!expected) {
+  // DLC link containers (filecrypt and link sites offer them) always go to Hakobu, which opens them in LinkGrabber.
+  const isDlc = /\.dlc$/i.test(item.filename || '') || /\.dlc(?:$|[?#])/i.test(url);
+  if (!expected && !isDlc) {
     if (!s.captureDownloads) return;
     if (item.totalBytes > 0 && item.totalBytes < s.captureMinMB * 1024 * 1024) return;
   }
@@ -93,7 +95,7 @@ chrome.downloads.onCreated.addListener(async item => {
   chrome.downloads.erase({ id: item.id }).catch(() => {});
   const cookies = await chrome.cookies.getAll({ url }).catch(() => []);
   const filename = item.filename ? item.filename.split(/[\\/]/).pop() : undefined;
-  const payload = { links: [url], referrer: item.referrer, cookie: cookies.map(c => `${c.name}=${c.value}`).join('; '), filename, capture: true };
+  const payload = { links: [url], referrer: item.referrer, cookie: cookies.map(c => `${c.name}=${c.value}`).join('; '), filename, capture: !isDlc, dlc: isDlc };
   if (expected) {
     api('/api/add', payload).then(
       () => notify('Back to Hakobu', 'The download continues in Hakobu.'),

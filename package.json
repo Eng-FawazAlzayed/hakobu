@@ -1,19 +1,21 @@
 {
   "name": "hakobu",
   "productName": "Hakobu",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Hakobu (運ぶ, \"to carry\"): direct downloads, torrents, YouTube & media, with TorBox / Real-Debrid support",
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "test": "node test/smoke.mjs && node test/feeds.mjs && node test/extract.mjs && node test/api.mjs && node test/hosts.mjs && node test/media.mjs && node test/stability.mjs",
+    "test": "node test/smoke.mjs && node test/feeds.mjs && node test/extract.mjs && node test/api.mjs && node test/hosts.mjs && node test/media.mjs && node test/stability.mjs && node test/special.mjs",
     "dist": "node build/dist.js"
   },
   "license": "MIT",
   "dependencies": {
     "7zip-bin": "^5.2.0",
+    "fetch-socks": "^1.3.3",
     "node-unrar-js": "^2.0.2",
+    "undici": "^7.30.1",
     "webtorrent": "^3.0.21"
   },
   "devDependencies": {
@@ -66,6 +68,11 @@
       {
         "ext": "torrent",
         "name": "Torrent file",
+        "role": "Viewer"
+      },
+      {
+        "ext": "dlc",
+        "name": "DLC link container",
         "role": "Viewer"
       },
       {

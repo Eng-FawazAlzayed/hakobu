@@ -9,10 +9,13 @@ const { checkLinks, packageName } = require('./engine/linkcheck');
 const { HosterRegistry } = require('./engine/hosters');
 const { ToolManager } = require('./engine/tools');
 const { mediaInfo } = require('./engine/media');
+const { HOSTS } = require('./engine/resolvers');
+const { decryptDlc } = require('./engine/crawler');
 const { execFile } = require('child_process');
 const crypto = require('crypto');
 
 const SECRET_KEYS = ['torboxKey', 'realdebridToken'];
+const SECRET_JSON = ['hostAccounts', 'proxies']; // objects with passwords: stored as one encrypted JSON string each
 let win = null;
 let manager = null;
 let feeds = null;
@@ -92,6 +95,14 @@ function loadSettings() {
       }
     }
   }
+  for (const k of SECRET_JSON) {
+    if (typeof raw[k] !== 'string') continue;
+    try {
+      raw[k] = JSON.parse(raw[k].startsWith('enc:') ? safeStorage.decryptString(Buffer.from(raw[k].slice(4), 'base64')) : raw[k]);
+    } catch {
+      delete raw[k];
+    }
+  }
   return { ...DEFAULT_SETTINGS, downloadDir: app.getPath('downloads'), ...raw };
 }
 
@@ -99,6 +110,7 @@ function saveSettings(settings) {
   const out = { ...settings };
   if (safeStorage.isEncryptionAvailable()) {
     for (const k of SECRET_KEYS) if (out[k]) out[k] = 'enc:' + safeStorage.encryptString(out[k]).toString('base64');
+    for (const k of SECRET_JSON) if (out[k] && typeof out[k] === 'object') out[k] = 'enc:' + safeStorage.encryptString(JSON.stringify(out[k])).toString('base64');
   }
   // Write a temp file and rename it over the old one, so a crash or power cut mid-write can't leave half a file.
   const file = userFile('settings.json');
@@ -121,6 +133,7 @@ function grabFromArgs(argv) {
   const entries = [];
   for (const arg of argv.slice(1)) {
     if (/\.hakobu-plugin$/i.test(arg) && fs.existsSync(arg)) installPluginFile(arg);
+    else if (/\.dlc$/i.test(arg) && fs.existsSync(arg)) openContainers([arg]);
     else if (/^magnet:/i.test(arg)) entries.push(...parseLinks(arg));
     else if (/\.torrent$/i.test(arg) && fs.existsSync(arg)) {
       entries.push({
@@ -132,6 +145,27 @@ function grabFromArgs(argv) {
     }
   }
   sendGrab(entries);
+}
+
+// DLC containers opened from disk (double-click, drop, Open with): their links go to LinkGrabber as one package.
+async function openContainers(files) {
+  let total = 0;
+  for (const f of files) {
+    try {
+      const r = await decryptDlc(fs.readFileSync(f, 'utf8'));
+      const entries = parseLinks(r.links.map(l => l.source).join('\n')).map(e => {
+        const l = r.links.find(x => x.source === e.source);
+        return { ...e, package: r.package, ...(l?.name ? { name: l.name } : {}), ...(r.passwords.length ? { archivePasswords: r.passwords } : {}) };
+      });
+      total += entries.length;
+      sendGrab(entries);
+    } catch (e) {
+      const send = () => win?.webContents.send('toast', { kind: 'err', title: `Couldn't open ${path.basename(f)}`, text: e.message });
+      if (win && !win.webContents.isLoading()) send();
+      else app.whenReady().then(() => setTimeout(send, 2000));
+    }
+  }
+  return total;
 }
 
 // "Needs browser": open the host's page in the default browser; the extension brings the real download back.
@@ -288,6 +322,19 @@ async function runScreenshots() {
 function registerIpc() {
   ipcMain.handle('state', () => ({ items: manager.snapshot(), settings: manager.settings, peerPort: manager.torrents.port, altLimits: manager.limitsAlt }));
   ipcMain.handle('parse', (_e, text) => withPackages(parseLinks(text)));
+  ipcMain.handle('openContainers', (_e, files) => openContainers((Array.isArray(files) ? files : []).filter(f => /\.dlc$/i.test(f) && fs.existsSync(f))));
+  ipcMain.handle('openUrl', (_e, url) => {
+    if (/^https?:\/\//i.test(String(url))) shell.openExternal(String(url));
+  });
+  // Settings → Host accounts: the built-in hosts that take an account, and a login test.
+  ipcMain.handle('hostModules', () =>
+    HOSTS.filter(h => h.account).map(h => ({ id: h.id, name: h.name, free: !!h.free, fields: h.account.fields, help: h.account.help || '' }))
+  );
+  ipcMain.handle('accountTest', async (_e, id, account) => {
+    const mod = HOSTS.find(h => h.id === id);
+    if (!mod?.accountInfo) throw new Error('This host has no account check');
+    return mod.accountInfo(account, { signal: AbortSignal.timeout(20000) });
+  });
   ipcMain.handle('checkLinks', async (_e, urls) => {
     await hosters.refresh().catch(() => {});
     return checkLinks(urls, { registry: hosters, route: url => manager.defaultRoute({ kind: 'http', source: url }) });
@@ -497,6 +544,9 @@ app.whenReady().then(async () => {
       text: `${it.name}: ${it.kind === 'torrent' ? 'downloading by P2P' : 'downloading directly'}. (${it.fallbackReason})`,
     })
   );
+  manager.on('hostWait', (it, why) => win?.webContents.send('toast', { kind: 'info', title: 'Host asked to wait', text: `${it.name}: ${why}` }));
+  manager.on('mirror', (it, m) => win?.webContents.send('toast', { kind: 'info', title: `Switched to a mirror on ${m.to}`, text: `${it.name}: ${m.from} failed (${m.reason})` }));
+  manager.on('hashBad', (it, why) => win?.webContents.send('toast', { kind: 'err', title: 'Damaged download', text: `${it.name}: ${why}` }));
   manager.on('scheduled', job => win?.webContents.send('toast', { kind: 'info', title: 'Scheduler', text: { start: 'Started downloads', pause: 'Paused downloads', 'turtle-on': 'Turtle mode on', 'turtle-off': 'Turtle mode off' }[job.action] }));
 
   // Browser extension + Click'n'Load. A token is generated on first run.

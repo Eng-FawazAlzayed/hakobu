@@ -239,3 +239,9 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 /* "Needs browser": the globe button stays visible and stands out */
 .row.needs-browser .quick { width: 138px; opacity: 1; transform: none; }
 .row.needs-browser .quick [data-q="browser"] { color: var(--accent); background: var(--accent-soft); }
+
+/* Host accounts (Settings) */
+.acct-list { display: flex; flex-direction: column; gap: 8px; }
+.acct { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.acct .hrow input { min-width: 0; flex: 1; }
+.acct .hint { margin: 0; }

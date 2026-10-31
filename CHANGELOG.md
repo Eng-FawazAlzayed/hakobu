@@ -2,6 +2,24 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.4.0] - 2026-11-01
+
+JDownloader-style handling of file hosts and their special cases.
+
+### Added
+- Built-in host support without debrid: MEGA files and folders (decrypted while downloading), Pixeldrain files and lists, Gofile folders, MediaFire files and folders, Google Drive files and folders (including the "can't scan for viruses" page), and 1fichier free downloads with their waits.
+- Link crawler: folder links, DLC containers (open, drop or double-click a .dlc; the extension sends .dlc downloads to Hakobu), paste sites and web server "Index of" listings turn into their files in LinkGrabber, with sub-folders kept. Link protectors such as filecrypt are marked "protected" with a button to open them in the browser.
+- Smart waits: HTTP 429/503 with Retry-After, MEGA's transfer quota, 1fichier's "wait 17 minutes", Google Drive's daily quota and a full disk put a download in "Waiting" with a countdown instead of failing. A host-wide wait holds the other downloads from that host too. Press play to try right away.
+- Automatic retries for connection problems after 1, 5 and 15 minutes (setting).
+- Mirrors: the same file (name and size) on several hosts downloads once; if one host fails, the next one takes over.
+- File checks: CRC32, MD5, SHA-1 and SHA-256 from .sfv/.md5/.sha files in a package and from hashes hosts report (Pixeldrain, MediaFire, Gofile). A damaged file downloads again once, then shows as damaged.
+- Links already in your downloads are marked in LinkGrabber and unticked. New setting for files already in the folder: keep both, skip if same size, or overwrite.
+- Limits per host (downloads at a time, connections), with built-in limits for free MEGA and 1fichier.
+- When a connection finishes early it splits the slowest remaining part, so the last percent doesn't crawl on one connection.
+- Proxies: HTTP and SOCKS4/5, per host, either always or only to skip IP waits (the download moves to the next proxy instead of waiting).
+- Host accounts in Settings: Rapidgator, Nitroflare, Keep2Share, 1fichier, Pixeldrain and Gofile, used before debrid, with a Test button. Stored encrypted.
+- Not enough disk space is checked before a download starts.
+
 ## [0.3.5] - 2026-11-01
 
 ### Added

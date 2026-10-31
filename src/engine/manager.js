@@ -12,8 +12,11 @@ const { TorBox } = require('../debrid/torbox');
 const { infoHashFromMagnet, isHoster } = require('../linkparse');
 const { sanitize, safeJoin } = require('../util');
 const { extractAll, isFirstVolume } = require('./extract');
-const { HosterRegistry } = require('./hosters');
-const { resolverFor } = require('./resolvers');
+const { HosterRegistry, hostOf } = require('./hosters');
+const { resolverFor, setAccounts } = require('./resolvers');
+const { HostError } = require('./errors');
+const net = require('./net');
+const { hashFile, normalizeHash, expectedFromHashFiles } = require('./verify');
 const { MediaTask } = require('./media');
 const { ToolManager } = require('./tools');
 
@@ -58,7 +61,18 @@ const DEFAULT_SETTINGS = {
   autoUpdateTools: true,
   fallbackRetries: 2,
   downloadSchedule: [], // [{ id, time: 'HH:MM', days: [0-6], action: 'start' | 'pause' | 'turtle-on' | 'turtle-off' }]
+  // ---- host special cases (JDownloader-style) ----
+  autoRetries: 3, // connection problems: try again after 1, 5, 15 minutes before giving up
+  fileExists: 'rename', // rename | skip | overwrite: when the file is already in the folder
+  verifyHashes: true, // check CRC32/MD5/SHA from .sfv/.md5 files and host-reported hashes
+  redownloadBad: true, // download a file again (once) when its hash doesn't match
+  splitSegments: true, // when a connection finishes, help with the slowest remaining part
+  hostLimits: {}, // 'host.com' -> { downloads, connections } (0 = no limit)
+  proxies: [], // see net.js
+  hostAccounts: {}, // host module id -> account fields (encrypted on disk)
 };
+
+const RETRY_WAITS = [60000, 5 * 60000, 15 * 60000];
 
 // Fields of an item the user may change after it was added.
 const EDITABLE = ['category', 'tags', 'limitKB', 'seedRatio', 'seedTimeMin', 'sequential', 'selectedFiles', 'extraTrackers', 'name'];
@@ -73,6 +87,7 @@ function magnetName(source) {
 }
 
 const RUNNING = new Set(['active', 'resolving', 'seeding']);
+const fmtWait = ms => (ms >= 3600000 ? `${Math.round(ms / 360000) / 10} h` : ms >= 60000 ? `${Math.round(ms / 60000)} min` : `${Math.max(1, Math.round(ms / 1000))} s`);
 
 class Manager extends EventEmitter {
   constructor({ statePath, settings = {}, items = [], torrentOptions = {}, hosters = null, tools = null }) {
@@ -88,6 +103,7 @@ class Manager extends EventEmitter {
     this.torrents = new TorrentEngine();
     this.torrentOptions = torrentOptions;
     this.dirty = false;
+    this.hostWaits = new Map(); // host -> { until, reason } (a host told us to wait for every download)
   }
 
   async init() {
@@ -95,10 +111,12 @@ class Manager extends EventEmitter {
     this.applySettings();
     for (const it of this.items.values()) {
       if (RUNNING.has(it.status)) it.status = it.status === 'seeding' ? 'seeding-queued' : 'queued';
+      if (it.hash?.state === 'checking') it.hash = null; // a check cut short by quitting runs again below
       it.speed = it.upSpeed = it.peers = 0;
     }
     // Resume seeding for finished torrents that hadn't hit their ratio.
     for (const it of this.items.values()) if (it.status === 'seeding-queued') this.startTorrent(it, true);
+    for (const it of this.items.values()) if (it.kind === 'http' && it.status === 'completed' && it.expectedHash && !it.hash) this.afterHttp(it).catch(() => {});
     this.timer = setInterval(() => this.tick(), 1000);
     this.saveTimer = setInterval(() => this.save(), 3000);
     this.schedule();
@@ -127,6 +145,8 @@ class Manager extends EventEmitter {
 
   applySettings(patch = {}) {
     Object.assign(this.settings, patch);
+    net.configure(this.settings.proxies);
+    setAccounts(this.settings.hostAccounts);
     this.applyLimits();
     this.dirty = true;
     this.schedule();
@@ -174,6 +194,7 @@ class Manager extends EventEmitter {
     if (entry.kind === 'media') return 'ytdlp';
     if (entry.kind === 'torrent') return this.settings.torrentRoute;
     if (this.settings.httpRoute !== 'auto') return this.settings.httpRoute;
+    if (resolverFor(entry.source)?.premium) return 'direct'; // your own premium account for this host comes first
     const configured = { torbox: !!this.settings.torboxKey, realdebrid: !!this.settings.realdebridToken };
     const supported = this.hosters.providersFor(entry.source).filter(p => configured[p.provider]);
     if (supported.length) {
@@ -229,6 +250,8 @@ class Manager extends EventEmitter {
         thumbnail: e.thumbnail || null,
         uploader: e.uploader || null,
         headers: e.headers || null,
+        mirrors: Array.isArray(e.mirrors) ? e.mirrors.filter(m => typeof m === 'string' && /^https?:/i.test(m) && m !== e.source) : [],
+        expectedHash: normalizeHash(e.hash),
         archivePasswords: Array.isArray(e.archivePasswords) ? e.archivePasswords : [],
         size: e.size || null,
         downloaded: 0,
@@ -254,8 +277,34 @@ class Manager extends EventEmitter {
     return it.via === 'torbox' || it.via === 'realdebrid';
   }
 
+  // Host of the page a download came from (its own host for plain links).
+  hostKey(it) {
+    return hostOf(it.pageUrl || it.source) || '';
+  }
+
+  // { downloads, connections } for a host: your setting, else the host's free-mode limit (0 = none).
+  hostLimit(host, resolver) {
+    const lim = this.settings.hostLimits || {};
+    const key = Object.keys(lim).find(d => host === d.toLowerCase() || host.endsWith('.' + d.toLowerCase()));
+    const mine = key ? lim[key] || {} : {};
+    return {
+      downloads: Number(mine.downloads) || resolver?.maxDownloads || 0,
+      connections: Number(mine.connections) || resolver?.maxConnections || 0,
+    };
+  }
+
+  // A host said "wait" for every download from it (IP limit, too many requests).
+  hostWaiting(host, now = Date.now()) {
+    const w = this.hostWaits.get(host);
+    if (w && w.until > now) return w;
+    if (w) this.hostWaits.delete(host);
+    return null;
+  }
+
   schedule() {
     const all = [...this.items.values()].sort((a, b) => a.createdAt - b.createdAt);
+    const perHost = new Map();
+    for (const i of all) if (i.status === 'active' && i.kind === 'http' && !this.isDebrid(i)) perHost.set(this.hostKey(i), (perHost.get(this.hostKey(i)) || 0) + 1);
     let http = all.filter(i => i.status === 'active' && i.kind === 'http' && !this.isDebrid(i)).length;
     let tor = all.filter(i => i.status === 'active' && i.via === 'p2p').length;
     let media = all.filter(i => i.status === 'active' && i.kind === 'media').length;
@@ -268,6 +317,15 @@ class Manager extends EventEmitter {
         }
       } else if (this.isDebrid(it)) this.startDebrid(it);
       else if (it.kind === 'http' && http < this.settings.maxConcurrent) {
+        const host = this.hostKey(it);
+        const waiting = this.hostWaiting(host);
+        if (waiting) {
+          this.setWaiting(it, waiting.until - Date.now(), `Waiting for ${host}: ${waiting.reason}`);
+          continue;
+        }
+        const max = this.hostLimit(host, resolverFor(it.source)).downloads;
+        if (max && (perHost.get(host) || 0) >= max) continue; // stays queued until a slot on that host frees up
+        perHost.set(host, (perHost.get(host) || 0) + 1);
         http++;
         this.startHttp(it);
       } else if (it.via === 'p2p' && tor < this.settings.maxActiveTorrents) {
@@ -294,11 +352,18 @@ class Manager extends EventEmitter {
       this.itemLimiters.set(it.id, itemLimiter);
     }
     const resolver = resolverFor(it.source);
+    const lim = this.hostLimit(this.hostKey(it), resolver);
+    const connections = lim.connections ? Math.min(lim.connections, this.settings.connectionsPerDownload) : this.settings.connectionsPerDownload;
+    const route = it.route || 0;
+    it.host = resolver ? resolver.name + (resolver.premium ? ' premium' : '') : null;
     const task = new HttpTask(it, {
-      resolve: resolver ? signal => resolver.resolve(it.source, signal) : null,
+      resolve: resolver ? signal => resolver.resolve(it.source, signal, route) : null,
       limiter: this.limiter,
       itemLimiter,
-      connections: this.settings.connectionsPerDownload,
+      connections,
+      route,
+      split: this.settings.splitSegments !== false,
+      exists: this.settings.fileExists || 'rename',
       taken: this.takenPaths(it),
     });
     this.tasks.set(it.id, task);
@@ -308,11 +373,15 @@ class Manager extends EventEmitter {
         it.status = 'completed';
         it.progress = 1;
         it.completedAt = Date.now();
+        it.retries = 0;
+        it.waitUntil = null;
+        if (it.skipped) it.note = 'Already in the folder, skipped';
         this.emit('completed', it);
-        this.maybeExtract(it).catch(e => console.error('[extract]', e.message));
+        this.afterHttp(it).catch(e => console.error('[after]', e.message));
       })
       .catch(e => {
         if (e.name === 'AbortError') return;
+        if (this.handleHostError(it, e)) return;
         if (e instanceof PageError) {
           const advice = this.hosterAdvice(it.source);
           e.message = `This link is a web page, not a file.${advice ? ' ' + advice : ''}`;
@@ -335,10 +404,12 @@ class Manager extends EventEmitter {
           }, 5000);
           return;
         }
+        if (this.tryMirror(it, e)) return;
+        if (!(e instanceof PageError) && !(e instanceof HostError && (e.permanent || e.browser)) && this.autoRetry(it, e)) return;
         if (it.fallbackFrom) e.message = `${e.message} (${this.providerName(it.fallbackFrom)} failed first: ${it.fallbackReason})`;
         this.fail(it, e);
         // A file host's page (wait timer, captcha, "click to download"): a person has to do that part in the browser.
-        if (e instanceof PageError && /^https?:/i.test(it.source)) {
+        if ((e instanceof PageError || (e instanceof HostError && e.browser)) && /^https?:/i.test(it.source)) {
           it.needsBrowser = true;
           it.pageUrl = it.pageUrl || it.source;
           this.emit('needsBrowser', it);
@@ -499,6 +570,161 @@ class Manager extends EventEmitter {
     }
   }
 
+  // ---------- host special cases: waits, retries, mirrors ----------
+
+  setWaiting(it, ms, reason) {
+    it.status = 'waiting';
+    it.waitUntil = Date.now() + Math.max(1000, ms);
+    it.error = reason;
+    it.speed = 0;
+    this.dirty = true;
+    this.emitUpdate();
+  }
+
+  // Waits the host asked for (Retry-After, "wait 30 minutes", quota, full disk). Returns true when handled.
+  handleHostError(it, e) {
+    if (!(e instanceof HostError) || !e.wait) return false;
+    const host = this.hostKey(it);
+    // An IP limit can be dodged by moving to the next proxy route (JDownloader's proxy rotation).
+    if (e.ipLimit && net.routeCount(it.source) > 1 && (it.routeTries || 0) < net.routeCount(it.source) - 1) {
+      it.routeTries = (it.routeTries || 0) + 1;
+      it.route = (it.route || 0) + 1;
+      it.status = 'queued';
+      it.error = null;
+      Object.assign(it, { probed: false, segments: null, downloaded: it.resumable ? it.downloaded : 0 });
+      this.emit('hostWait', it, `${e.message}: switched to ${net.routeLabel(it.source, it.route)}`);
+      return true;
+    }
+    if (it.mirrors?.length && !e.diskFull && this.tryMirror(it, e)) return true;
+    if (e.hostWide && host) this.hostWaits.set(host, { until: Date.now() + e.wait, reason: e.message });
+    this.setWaiting(it, e.wait, `${e.message}. Trying again in ${fmtWait(e.wait)}`);
+    this.emit('hostWait', it, e.message);
+    return true;
+  }
+
+  // Connection problems: wait 1, 5, 15 minutes between tries (setting autoRetries), like JDownloader's retry.
+  autoRetry(it, e) {
+    const max = Number(this.settings.autoRetries ?? 3);
+    if ((it.retries || 0) >= max) return false;
+    const ms = RETRY_WAITS[Math.min(it.retries || 0, RETRY_WAITS.length - 1)];
+    it.retries = (it.retries || 0) + 1;
+    this.setWaiting(it, ms, `${e.message}. Try ${it.retries + 1} of ${max + 1} in ${fmtWait(ms)}`);
+    return true;
+  }
+
+  // Another host has the same file: switch to it (JDownloader's mirror handling). Returns true when switched.
+  tryMirror(it, e) {
+    if (it.kind !== 'http' || !it.mirrors?.length) return false;
+    const next = it.mirrors.shift();
+    const old = it.source;
+    it.triedMirrors = [...(it.triedMirrors || []), old];
+    const oldPart = it.filename && !it.downloaded ? null : it.filename && path.join(it.dir, it.filename + '.part');
+    if (oldPart) fsp.rm(oldPart, { force: true }).catch(() => {});
+    Object.assign(it, {
+      source: next,
+      pageUrl: null,
+      needsBrowser: false,
+      via: this.defaultRoute({ kind: 'http', source: next }),
+      probed: false,
+      segments: null,
+      filename: null,
+      downloaded: 0,
+      progress: 0,
+      route: 0,
+      routeTries: 0,
+      retries: 0,
+      status: 'queued',
+      error: null,
+      fallbackFrom: null,
+      remote: null,
+      remoteId: null,
+    });
+    this.dirty = true;
+    this.emit('mirror', it, { from: hostOf(old), to: hostOf(next), reason: e?.message || '' });
+    this.schedule();
+    this.emitUpdate();
+    return true;
+  }
+
+  // ---------- after a direct download: hash check, then extraction ----------
+
+  async afterHttp(it) {
+    if (this.settings.verifyHashes !== false && !it.skipped) {
+      const bad = await this.verifyFile(it);
+      if (bad) return;
+      if (await this.verifyPackage(it)) return;
+    }
+    await this.maybeExtract(it);
+  }
+
+  // A file whose hash doesn't match is downloaded again once, then marked damaged. Returns true when it was bad.
+  async markBad(it, algo) {
+    const name = algo.toUpperCase();
+    if (this.settings.redownloadBad !== false && !it.redownloaded) {
+      it.redownloaded = true;
+      try {
+        await fsp.rm(path.join(it.dir, it.filename), { force: true });
+      } catch {}
+      Object.assign(it, { status: 'queued', probed: false, segments: null, downloaded: 0, progress: 0, hash: { state: 'bad', algo }, error: null });
+      this.emit('hashBad', it, `${name} mismatch, downloading again`);
+      this.schedule();
+    } else {
+      it.status = 'error';
+      it.error = `Damaged download: ${name} doesn't match`;
+      it.hash = { state: 'bad', algo };
+      this.emit('hashBad', it, it.error);
+    }
+    this.dirty = true;
+    this.emitUpdate();
+    return true;
+  }
+
+  async checkHash(it, want) {
+    it.hash = { state: 'checking', algo: want.algo, progress: 0 };
+    this.emitUpdate();
+    const got = await hashFile(path.join(it.dir, it.filename), want.algo, {
+      onProgress: p => {
+        it.hash = { ...it.hash, progress: p };
+        this.emitUpdate();
+      },
+    });
+    if (got !== want.value) return this.markBad(it, want.algo);
+    it.hash = { state: 'ok', algo: want.algo };
+    this.dirty = true;
+    this.emitUpdate();
+    return false;
+  }
+
+  async verifyFile(it) {
+    if (!it.expectedHash || !it.filename) return false;
+    try {
+      return await this.checkHash(it, it.expectedHash);
+    } catch (e) {
+      it.hash = { state: 'error', error: e.message };
+      return false;
+    }
+  }
+
+  // When the whole package is done, check its files against any .sfv/.md5/.sha* that came with it.
+  async verifyPackage(it) {
+    if (!it.package) return false;
+    const group = [...this.items.values()].filter(i => i.kind === 'http' && i.package === it.package && i.dir === it.dir);
+    if (!group.every(i => i.status === 'completed')) return false;
+    const want = expectedFromHashFiles(it.dir, group.map(i => i.filename).filter(Boolean));
+    if (!want.size) return false;
+    let bad = false;
+    for (const i of group) {
+      const w = i.filename && want.get(i.filename.toLowerCase());
+      if (!w || i.hash?.state === 'ok') continue;
+      try {
+        if (await this.checkHash(i, w)) bad = true;
+      } catch (e) {
+        i.hash = { state: 'error', error: e.message };
+      }
+    }
+    return bad;
+  }
+
   isDebridVia(via) {
     return via === 'torbox' || via === 'realdebrid';
   }
@@ -541,7 +767,7 @@ class Manager extends EventEmitter {
   async pause(id) {
     const it = this.items.get(id);
     if (!it) return;
-    if (!['active', 'queued', 'resolving', 'seeding', 'retrying'].includes(it.status)) return;
+    if (!['active', 'queued', 'resolving', 'seeding', 'retrying', 'waiting'].includes(it.status)) return;
     const wasSeeding = it.status === 'seeding';
     it.status = wasSeeding ? 'completed' : 'paused';
     this.tasks.get(id)?.abort();
@@ -600,9 +826,13 @@ class Manager extends EventEmitter {
 
   resume(id) {
     const it = this.items.get(id);
-    if (!it || !['paused', 'error', 'retrying', 'browser'].includes(it.status)) return;
+    if (!it || !['paused', 'error', 'retrying', 'browser', 'waiting'].includes(it.status)) return;
+    // Resume = "start now": skip this item's wait (a host-wide wait is lifted too, the user asked for it).
+    if (it.status === 'waiting') this.hostWaits.delete(this.hostKey(it));
+    if (it.status === 'error') it.retries = 0;
     it.status = 'queued';
     it.error = null;
+    it.waitUntil = null;
     this.dirty = true;
     this.schedule();
     this.emitUpdate();
@@ -681,14 +911,14 @@ class Manager extends EventEmitter {
       if (job.time !== hhmm || !(job.days || []).includes(now.getDay())) continue;
       this.emit('scheduled', job);
       if (job.action === 'start') for (const i of this.items.values()) this.resume(i.id);
-      if (job.action === 'pause') for (const i of this.items.values()) if (['active', 'queued', 'resolving'].includes(i.status)) Promise.resolve(this.pause(i.id)).catch(() => {});
+      if (job.action === 'pause') for (const i of this.items.values()) if (['active', 'queued', 'resolving', 'waiting'].includes(i.status)) Promise.resolve(this.pause(i.id)).catch(() => {});
       if (job.action === 'turtle-on' || job.action === 'turtle-off') this.applySettings({ altActive: job.action === 'turtle-on' });
     }
   }
 
   // True while anything is still downloading (seeding doesn't count).
   busy() {
-    return [...this.items.values()].some(i => ['active', 'queued', 'resolving', 'retrying'].includes(i.status) || ['queued', 'extracting'].includes(i.extract?.state));
+    return [...this.items.values()].some(i => ['active', 'queued', 'resolving', 'retrying', 'waiting'].includes(i.status) || ['queued', 'extracting'].includes(i.extract?.state) || i.hash?.state === 'checking');
   }
 
   checkAllDone() {
@@ -788,6 +1018,20 @@ class Manager extends EventEmitter {
 
   tick() {
     this.runSchedule();
+    let woke = false;
+    const now = Date.now();
+    for (const it of this.items.values()) {
+      if (it.status === 'waiting' && (it.waitUntil || 0) <= now) {
+        it.status = 'queued';
+        it.error = null;
+        it.waitUntil = null;
+        woke = true;
+      }
+    }
+    if (woke) {
+      this.dirty = true;
+      this.schedule();
+    }
     if (Date.now() - (this.lastResumeCapture || 0) > 60000) {
       this.lastResumeCapture = Date.now();
       for (const id of this.torrents.active.keys()) this.torrents.captureResume(id);

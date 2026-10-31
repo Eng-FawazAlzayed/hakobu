@@ -60,6 +60,7 @@ function view(it) {
     paused: ['paused', 'Paused', 'paused'],
     error: ['error', it.needsBrowser ? 'Needs browser' : 'Error', 'error'],
     retrying: ['downloading', 'Retrying soon', 'paused'],
+    waiting: ['downloading', `Waiting ${duration(Math.max(0, ((it.waitUntil || 0) - Date.now()) / 1000))}`, 'paused'],
     browser: ['downloading', 'Waiting for the browser', 'resolving'],
   };
   const [group, label, cls] = map[it.status] || ['paused', it.status, 'paused'];
@@ -86,6 +87,7 @@ function metaLine(it, v) {
   if (it.status === 'browser') return `<span>Finish the wait or captcha in your browser and click its download button. Hakobu takes the download from there.</span>`;
   if (it.needsBrowser && it.status === 'error') return `<span class="err" title="${esc(it.error)}">This host wants a person: press the globe to open it in your browser.</span>`;
   if (it.status === 'error') return `<span class="err" title="${esc(it.error)}">${esc(it.error)}</span>`;
+  if (it.status === 'waiting') return `<span class="muted ell" title="${esc(it.error || '')}">${esc(it.error || 'Waiting for the host')}</span><span class="muted">Press play to try now</span>`;
   if (v.size) parts.push(v.group === 'completed' || v.group === 'seeding' ? bytes(v.size) : `${bytes(v.downloaded)} of ${bytes(v.size)}`);
   else if (v.downloaded) parts.push(bytes(v.downloaded));
   if (v.group === 'downloading' && v.speed > 0) {
@@ -99,6 +101,15 @@ function metaLine(it, v) {
   if (it.via === 'p2p' && it.ratio) parts.push(`ratio ${it.ratio.toFixed(2)}`);
   if (it.remote?.seeders != null && it.status === 'resolving') parts.push(`${it.remote.seeders} seeders (cloud)`);
   if (it.parentId) parts.push('via debrid');
+  if (it.host && it.via === 'direct' && !it.parentId) parts.push(esc(it.host));
+  if (it.mirrors?.length) parts.push(`<span title="${esc(it.mirrors.join('\n'))}">+${it.mirrors.length} mirror${it.mirrors.length > 1 ? 's' : ''}</span>`);
+  if (it.triedMirrors?.length) parts.push(`<span class="xchip x-error" title="${esc(it.triedMirrors.join('\n'))}">↪ mirror ${it.triedMirrors.length + 1}</span>`);
+  if (it.note) parts.push(`<span class="muted">${esc(it.note)}</span>`);
+  const hs = it.hash;
+  if (hs?.state) {
+    const label = { checking: `checking ${(hs.algo || '').toUpperCase()} ${Math.round((hs.progress || 0) * 100)}%`, ok: `${(hs.algo || '').toUpperCase()} ok`, bad: `${(hs.algo || '').toUpperCase()} bad`, error: "couldn't check" }[hs.state];
+    if (label) parts.push(`<span class="xchip x-${hs.state === 'ok' ? 'done' : hs.state === 'checking' ? 'extracting' : 'error'}" title="${esc(hs.error || 'File check against the host or the package\'s .sfv/.md5')}">${icon('check')}${label}</span>`);
+  }
   if (it.rssRule) parts.push(`RSS · ${esc(it.rssRule)}`);
   if (it.kind === 'media') {
     parts.unshift(`<span>${mediaLabel(it)}</span>`);
@@ -669,6 +680,7 @@ function confirmModal(title, text) {
 
 // ---------- LinkGrabber ----------
 function defaultVia(e) {
+  if (e.route) return e.route;
   if (e.kind === 'torrent') return settings.torrentRoute;
   if (settings.httpRoute !== 'auto') return settings.httpRoute;
   if (!e.hoster) return 'direct';
@@ -682,9 +694,11 @@ const pkgDirs = {}; // package -> custom folder
 
 async function addToGrabber(entries, focus = true) {
   const known = new Set(grab.map(g => g.infoHash || g.source));
+  // Already in the download list (JDownloader asks about these): shown, but unticked.
+  const inList = new Set(items.flatMap(i => [i.source, i.pageUrl, ...(i.triedMirrors || [])].filter(Boolean)));
   const fresh = entries
     .filter(e => !known.has(e.infoHash || e.source))
-    .map(e => ({ ...e, sel: true, via: defaultVia(e), pkg: e.package || e.autoPackage || e.name, pkgAuto: !e.package, viaAuto: true, check: e.kind === 'torrent' ? null : { status: 'checking' },
+    .map(e => ({ ...e, sel: !inList.has(e.source), dup: inList.has(e.source), via: defaultVia(e), pkg: e.package || e.autoPackage || e.name, pkgAuto: !e.package, viaAuto: true, check: e.kind === 'torrent' ? null : e.check || { status: 'checking' },
       ...(e.kind === 'media' ? { mediaFormat: settings.ytFormat || 'mp4', mediaQuality: settings.ytFormat === 'mp3' ? settings.ytAudioQuality || '192' : settings.ytVideoQuality || '1080', pkg: e.playlist ? 'Playlist' : 'YouTube & media', pkgAuto: false } : {}) }));
   if (!fresh.length) return;
   grab.push(...fresh);
@@ -706,7 +720,40 @@ async function addToGrabber(entries, focus = true) {
       renderGrab();
     });
   }
-  if (http.length) checkGrabbed(http);
+  const toCheck = http.filter(g => g.check?.status === 'checking');
+  if (toCheck.length) checkGrabbed(toCheck);
+  else if (http.length) mergeMirrors();
+  const dups = fresh.filter(g => g.dup).length;
+  if (dups) toast('info', `${dups} link${dups > 1 ? 's are' : ' is'} already in your downloads`, 'They were unticked. Tick them to download again.');
+}
+
+// Same file name and size on different hosts = mirrors (JDownloader): one download, the others are its fallbacks.
+function mergeMirrors() {
+  const host = u => {
+    try {
+      return new URL(u).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  };
+  const byKey = new Map();
+  const drop = new Set();
+  for (const g of grab) {
+    if (g.kind !== 'http' || !g.size || !g.name || g.check?.status !== 'online') continue;
+    const key = g.name.toLowerCase() + '|' + g.size;
+    const first = byKey.get(key);
+    if (!first) {
+      byKey.set(key, g);
+      continue;
+    }
+    if (host(first.source) === host(g.source) || (first.mirrors || []).some(m => host(m) === host(g.source))) continue;
+    first.mirrors = [...(first.mirrors || []), g.source];
+    drop.add(g);
+  }
+  if (!drop.size) return;
+  grab = grab.filter(g => !drop.has(g));
+  renderGrab();
+  toast('info', `${drop.size} mirror${drop.size > 1 ? 's' : ''} found`, 'Files on more than one host download once; the other hosts take over if one fails.');
 }
 
 // Title, channel and thumbnail for YouTube & media links (oEmbed is instant; playlists ask yt-dlp).
@@ -731,9 +778,11 @@ async function checkMedia(list) {
 
 // JDownloader-style online check: status, real file name, size, and a better package name.
 async function checkGrabbed(list) {
-  const results = await api.checkLinks(list.map(g => g.source));
+  const results = await api.checkLinks(list.map(g => ({ url: g.source, headers: g.headers || undefined })));
+  const folders = [];
   list.forEach((g, i) => {
     const r = results[i] || { status: 'unknown' };
+    if (r.status === 'folder') return folders.push([g, r]);
     g.check = r;
     if (r.filename) {
       g.name = r.filename;
@@ -743,10 +792,36 @@ async function checkGrabbed(list) {
     if (g.pkgAuto && r.autoPackage) g.pkg = r.autoPackage;
     // The main process knows which services support the host: use its route unless the user picked one.
     if (g.viaAuto && r.route && g.kind !== 'torrent') g.via = r.route;
-    if (['offline', 'page', 'unsupported'].includes(r.status)) g.sel = false;
+    if (['offline', 'page', 'unsupported', 'protected'].includes(r.status)) g.sel = false;
   });
+  // Folder links, DLC containers and pastes are swapped for the links inside them (one package each).
+  for (const [g, r] of folders) {
+    grab.splice(grab.indexOf(g), 1);
+    if (!r.links.length) {
+      toast('err', 'Empty folder', g.source);
+      continue;
+    }
+    const entries = r.links.map(l => ({
+      kind: 'http',
+      source: l.source,
+      name: l.name || l.source,
+      suggestedName: l.name || undefined,
+      size: l.size || undefined,
+      headers: l.headers || undefined,
+      hash: l.hash || undefined,
+      subfolder: l.subfolder || undefined,
+      hoster: true,
+      package: r.package,
+      archivePasswords: r.passwords?.length ? r.passwords : g.archivePasswords,
+      check: l.check || (l.size && l.name ? { status: 'online' } : undefined),
+      route: l.route || undefined,
+    }));
+    toast('ok', `Opened ${r.package}`, `${entries.length} file${entries.length === 1 ? '' : 's'} inside`);
+    await addToGrabber(entries, false);
+  }
   // Single files whose names now match another package join it.
   renderGrab();
+  mergeMirrors();
   const off = list.filter(g => g.check?.status === 'offline').length;
   if (off) toast('err', `${off} link${off > 1 ? 's are' : ' is'} offline`, 'They were unticked. Use "Remove offline" to clear them.');
   const bad = list.filter(g => ['page', 'unsupported'].includes(g.check?.status));
@@ -773,6 +848,8 @@ function checkChip(g) {
   if (s === 'offline') return `<span class="lc lc-off" title="${esc(g.check.error || '')}">${icon('x')}offline</span>`;
   if (s === 'page') return `<span class="lc lc-off" title="${esc(g.check.error || '')}">${icon('x')}web page</span>`;
   if (s === 'unsupported') return `<span class="lc lc-off" title="${esc(g.check.error || '')}">${icon('x')}unsupported host</span>`;
+  if (s === 'protected') return `<span class="lc lc-unk" title="${esc(g.check.error || '')}">${icon('globe')}protected: open in browser</span>`;
+  if (s === 'browser') return `<span class="lc lc-unk" title="${esc(g.check.error || '')}">${icon('globe')}needs browser</span>`;
   if (s === 'hoster') {
     const names = (g.check.providers || []).map(p => (p === 'torbox' ? 'TorBox' : 'Real-Debrid'));
     const usable = g.via === 'torbox' || g.via === 'realdebrid';
@@ -825,13 +902,14 @@ function renderGrab() {
               <div class="type t-${g.kind === 'media' ? 'ytdlp' : type}${g.thumbnail ? ' thumb' : ''}"${g.thumbnail ? ` style="background-image:url('${esc(g.thumbnail)}')"` : ''}>${g.thumbnail ? '' : icon(g.kind === 'torrent' ? 'magnet' : g.kind === 'media' ? 'youtube' : TYPE_ICON[type])}</div>
               <div class="body">
                 <div class="title"><span class="name" title="${esc(g.source)}">${esc(g.name)}</span>${checkChip(g)}
+                  ${g.dup ? '<span class="tag tag-hoster" title="Already in your download list">IN DOWNLOADS</span>' : ''}${g.mirrors?.length ? `<span class="tag tag-hoster" title="${esc(g.mirrors.join('\n'))}">+${g.mirrors.length} MIRROR${g.mirrors.length > 1 ? 'S' : ''}</span>` : ''}
                   ${g.cached ? `<span class="tag tag-cached">${icon('bolt')}CACHED</span>` : ''}${g.hoster ? `<span class="tag tag-hoster">${esc(g.check?.host || 'HOSTER')}</span>` : ''}${g.archivePasswords?.length ? '<span class="tag tag-hoster">🔑 password</span>' : ''}</div>
                 <div class="meta"><span>${g.kind === 'torrent' ? 'Torrent' : g.kind === 'media' ? (g.playlist ? 'Playlist' : 'Video') : 'HTTP'}</span>${g.uploader ? `<span>${esc(g.uploader)}</span>` : ''}${g.size ? `<span>${bytes(g.size)}</span>` : ''}${
                   g.files ? `<span>${g.selectedFiles ? g.selectedFiles.length : g.files.length} of ${g.files.length} files</span>` : ''}${g.dir ? `<span class="gdir" title="${esc(g.dir)}">→ ${esc(g.dir)}</span>` : ''}${g.check?.error && g.check.status !== 'online' ? `<span class="err ell">${esc(g.check.error)}</span>` : ''}</div>
               </div>
               <div class="side">
                 <select class="gvia">${ROUTES(g.kind).map(([v, l]) => `<option value="${v}" ${(g.kind === 'media' ? `${g.mediaFormat}:${g.mediaQuality}` : g.via) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-                <div class="quick">${g.kind === 'torrent' ? `<button data-g="files" title="Choose files">${icon('layers')}</button>` : ''}<button data-g="dir" title="Save this one somewhere else">${icon('folder')}</button><button data-g="remove" title="Remove">${icon('x')}</button></div>
+                <div class="quick">${['protected', 'browser'].includes(g.check?.status) ? `<button data-g="web" title="Open in your browser">${icon('globe')}</button>` : ''}${g.kind === 'torrent' ? `<button data-g="files" title="Choose files">${icon('layers')}</button>` : ''}<button data-g="dir" title="Save this one somewhere else">${icon('folder')}</button><button data-g="remove" title="Remove">${icon('x')}</button></div>
               </div></div>`;
             })
             .join('');
@@ -847,7 +925,7 @@ function updateGrabSummary() {
   $('#grabCount').textContent = n;
   $('#grabCount').classList.toggle('hidden', !n);
   const pk = new Set(grab.map(g => g.pkg)).size;
-  const off = grab.filter(g => ['offline', 'page', 'unsupported'].includes(g.check?.status)).length;
+  const off = grab.filter(g => ['offline', 'page', 'unsupported', 'protected'].includes(g.check?.status)).length;
   $('#grabSummary').textContent = n ? `${grab.filter(g => g.sel).length} of ${n} selected · ${pk} package${pk === 1 ? '' : 's'}${off ? ` · ${off} offline` : ''}` : '';
   $('#btnGrabStart').disabled = !grab.some(g => g.sel);
   $('#btnRemoveOffline').classList.toggle('hidden', !off);
@@ -929,6 +1007,10 @@ $('#grabList').addEventListener('click', e => {
   const row = e.target.closest('.row');
   if (!row || e.target.closest('select')) return;
   if (e.target.closest('[data-g="files"]')) return TorrentDialog.open(grab[row.dataset.i]);
+  if (e.target.closest('[data-g="web"]')) {
+    api.openUrl(grab[row.dataset.i].source);
+    return toast('info', 'Opened in your browser', "Solve the captcha, then press the site's Click'n'Load or DLC button. The links come back here.");
+  }
   if (e.target.closest('[data-g="dir"]')) {
     const g = grab[row.dataset.i];
     api.pickFolder().then(d => {
@@ -966,7 +1048,7 @@ $('#btnClearGrab').addEventListener('click', () => {
   renderGrab();
 });
 $('#btnRemoveOffline').addEventListener('click', () => {
-  grab = grab.filter(g => !['offline', 'page', 'unsupported'].includes(g.check?.status));
+  grab = grab.filter(g => !['offline', 'page', 'unsupported', 'protected'].includes(g.check?.status));
   renderGrab();
 });
 $('#btnGrabDir').addEventListener('click', async () => {
@@ -986,11 +1068,12 @@ async function startGrabbed(chosen) {
   const sizes = {};
   for (const g of grab) sizes[g.pkg] = (sizes[g.pkg] || 0) + 1;
   const n = await api.add(
-    chosen.map(({ sel, cached, check, pkg, pkgAuto, autoPackage, viaAuto, ...e }) => {
+    chosen.map(({ sel, cached, check, pkg, pkgAuto, autoPackage, viaAuto, dup, subfolder, route, ...e }) => {
       if (e.via === 'ytdlp' && e.kind === 'http') Object.assign(e, { kind: 'media', mediaFormat: settings.ytFormat || 'mp4' });
       if (e.kind === 'media') return { ...e, via: 'ytdlp', dir: e.dir || base, package: null, paused };
       const multi = sizes[pkg] > 1;
-      const dir = e.dir || pkgDirs[pkg] || (multi && settings.packageSubfolder !== false && e.kind !== 'torrent' ? `${base}\\${safeName(pkg)}` : base);
+      let dir = e.dir || pkgDirs[pkg] || (multi && settings.packageSubfolder !== false && e.kind !== 'torrent' ? `${base}\\${safeName(pkg)}` : base);
+      if (subfolder && !e.dir) dir += '\\' + String(subfolder).split('/').map(safeName).join('\\'); // keep the folder's own layout
       return { ...e, package: multi || e.archivePasswords?.length ? pkg : e.package || null, dir, paused };
     })
   );
@@ -1053,8 +1136,12 @@ window.addEventListener('drop', e => {
   $('#dropHint').classList.remove('show');
   const files = [...e.dataTransfer.files];
   const plugins = files.filter(f => /\.(js|hakobu-plugin)$/i.test(f.name));
+  const dlc = files.filter(f => /\.dlc$/i.test(f.name));
   if (plugins.length) window.installPluginFiles?.(plugins);
-  if (files.length > plugins.length) addTorrentFiles(files.filter(f => !plugins.includes(f)));
+  if (dlc.length) api.openContainers(dlc);
+  const rest = files.filter(f => !plugins.includes(f) && !dlc.includes(f));
+  if (rest.length) addTorrentFiles(rest);
+  else if (plugins.length || dlc.length) return;
   else if (files.length) return;
   else api.parse(e.dataTransfer.getData('text')).then(addToGrabber);
 });
@@ -1083,7 +1170,7 @@ $$('[data-theme-opt]').forEach(b =>
 window.__setTheme = t => applyTheme(t, false); // used by the screenshot helper
 
 // ---------- settings ----------
-const NUMERIC = ['maxConcurrentMedia', 'apiPort', 'maxConcurrent', 'connectionsPerDownload', 'maxActiveTorrents', 'dlLimitKB', 'ulLimitKB', 'seedRatio', 'torrentPort', 'altDlKB', 'altUlKB', 'seedTimeMin'];
+const NUMERIC = ['autoRetries', 'maxConcurrentMedia', 'apiPort', 'maxConcurrent', 'connectionsPerDownload', 'maxActiveTorrents', 'dlLimitKB', 'ulLimitKB', 'seedRatio', 'torrentPort', 'altDlKB', 'altUlKB', 'seedTimeMin'];
 $('#grabClip').addEventListener('change', async e => {
   settings = await api.saveSettings({ clipboardMonitor: e.target.checked });
   toast('info', e.target.checked ? 'Watching clipboard' : 'Clipboard watching off', e.target.checked ? 'Copied links will appear here for approval.' : '');
@@ -1103,6 +1190,9 @@ function fillSettings() {
   $('#schDays').innerHTML = DAYS.map((d, i) => `<button type="button" data-day="${i}" class="${(sch.days || []).includes(i) ? 'on' : ''}">${d}</button>`).join('');
   renderCatList();
   renderProvList();
+  renderHostLimits();
+  renderProxies();
+  renderAccounts();
   $('#pwList').value = (settings.archivePasswords || []).join('\n');
   $('#jobDays').innerHTML = DAYS.map((d, i) => `<button type="button" data-day="${i}" class="on">${d}</button>`).join('');
   renderJobs();
@@ -1330,6 +1420,112 @@ $('#catList').addEventListener('click', async e => {
   renderCatList();
   catKey = '';
   render();
+});
+
+// ---------- host special cases: per-host limits, proxies, accounts ----------
+function renderHostLimits() {
+  const lim = Object.entries(settings.hostLimits || {});
+  $('#hostLimitList').innerHTML = lim.length
+    ? lim.map(([h, l]) => `<div class="mini"><span class="grow ell">${esc(h)}</span><span class="muted">${l.downloads ? `${l.downloads} at a time` : 'any number'} · ${l.connections ? `${l.connections} connection${l.connections > 1 ? 's' : ''}` : 'default connections'}</span><button type="button" class="x" data-delhl="${esc(h)}">${icon('x')}</button></div>`).join('')
+    : '<div class="muted">No limits. Free MEGA and 1fichier already get their own (2 and 1 at a time).</div>';
+}
+$('#hlAdd').addEventListener('click', async () => {
+  const host = $('#hlHost').value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  if (!host) return;
+  const hostLimits = { ...(settings.hostLimits || {}), [host]: { downloads: Number($('#hlDl').value) || 0, connections: Number($('#hlConn').value) || 0 } };
+  settings = await api.saveSettings({ hostLimits });
+  $('#hlHost').value = $('#hlDl').value = $('#hlConn').value = '';
+  renderHostLimits();
+});
+$('#hostLimitList').addEventListener('click', async e => {
+  const h = e.target.closest('[data-delhl]')?.dataset.delhl;
+  if (!h) return;
+  const hostLimits = { ...(settings.hostLimits || {}) };
+  delete hostLimits[h];
+  settings = await api.saveSettings({ hostLimits });
+  renderHostLimits();
+});
+
+const maskProxy = u => String(u).replace(/\/\/([^:@/]+):([^@/]+)@/, '//$1:•••@');
+function renderProxies() {
+  const list = settings.proxies || [];
+  $('#proxyList').innerHTML = list.length
+    ? list.map((p, i) => `<div class="mini"><label class="switch"><input type="checkbox" data-px-on="${i}" ${p.enabled !== false ? 'checked' : ''} /><i></i></label><span class="grow ell" title="${esc(maskProxy(p.url))}">${esc(maskProxy(p.url))}</span><span class="muted ell">${esc(p.hosts || 'all hosts')} · ${p.mode === 'rotate' ? 'skip waits' : 'always'}</span><button type="button" class="x" data-delpx="${i}">${icon('x')}</button></div>`).join('')
+    : '<div class="muted">No proxies: everything goes direct.</div>';
+}
+async function saveProxies(proxies) {
+  settings = await api.saveSettings({ proxies });
+  renderProxies();
+}
+$('#pxAdd').addEventListener('click', () => {
+  let url = $('#pxUrl').value.trim();
+  if (!url) return;
+  if (!/^[a-z0-9]+:\/\//i.test(url)) url = 'http://' + url;
+  if (!/^(https?|socks[45]h?):\/\/[^/]+/i.test(url)) return toast('err', 'Not a proxy address', 'Use http://host:port or socks5://user:pass@host:port');
+  saveProxies([...(settings.proxies || []), { url, hosts: $('#pxHosts').value.trim(), mode: $('#pxMode').value, enabled: true }]);
+  $('#pxUrl').value = $('#pxHosts').value = '';
+});
+$('#proxyList').addEventListener('click', e => {
+  const i = e.target.closest('[data-delpx]')?.dataset.delpx;
+  if (i !== undefined) saveProxies((settings.proxies || []).filter((_, j) => j !== Number(i)));
+});
+$('#proxyList').addEventListener('change', e => {
+  const i = e.target.dataset.pxOn;
+  if (i !== undefined) saveProxies((settings.proxies || []).map((p, j) => (j === Number(i) ? { ...p, enabled: e.target.checked } : p)));
+});
+
+let hostModules = null;
+async function renderAccounts() {
+  hostModules = hostModules || (await api.hostModules());
+  const acc = settings.hostAccounts || {};
+  $('#acctList').innerHTML = hostModules
+    .map(m => {
+      const a = acc[m.id] || {};
+      const set = m.fields.every(f => a[f.key]);
+      return `<div class="acct" data-acct="${esc(m.id)}">
+        <div class="hrow"><b class="grow">${esc(m.name)}</b><span class="muted">${set ? (a.enabled === false ? 'off' : 'in use') : m.free ? 'free mode' : 'needs an account'}</span>
+          ${set ? `<label class="switch"><input type="checkbox" data-acct-on ${a.enabled !== false ? 'checked' : ''} /><i></i></label>` : ''}</div>
+        <div class="hrow">${m.fields.map(f => `<input data-f="${esc(f.key)}" placeholder="${esc(f.label)}" ${f.secret ? 'type="password" autocomplete="off"' : ''} value="${esc(a[f.key] || '')}" />`).join('')}
+          <button type="button" class="btn ghost" data-acct-test>Test</button><button type="button" class="btn ghost" data-acct-save>Save</button>${set ? `<button type="button" class="x" data-acct-del title="Remove">${icon('x')}</button>` : ''}</div>
+        <p class="hint">${esc(m.help)}</p></div>`;
+    })
+    .join('');
+}
+const acctFields = box => Object.fromEntries([...box.querySelectorAll('[data-f]')].map(i => [i.dataset.f, i.value.trim()]));
+$('#acctList').addEventListener('click', async e => {
+  const box = e.target.closest('[data-acct]');
+  if (!box) return;
+  const id = box.dataset.acct;
+  const name = hostModules.find(m => m.id === id)?.name || id;
+  const accounts = { ...(settings.hostAccounts || {}) };
+  if (e.target.closest('[data-acct-save]')) {
+    accounts[id] = { ...acctFields(box), enabled: true };
+    settings = await api.saveSettings({ hostAccounts: accounts });
+    toast('ok', `${name} account saved`, 'New downloads from this host use it.');
+    return renderAccounts();
+  }
+  if (e.target.closest('[data-acct-del]')) {
+    delete accounts[id];
+    settings = await api.saveSettings({ hostAccounts: accounts });
+    return renderAccounts();
+  }
+  if (e.target.closest('[data-acct-test]')) {
+    try {
+      const r = await api.accountTest(id, acctFields(box));
+      const left = r.trafficLeft ? ` · ${bytes(r.trafficLeft)} left` : '';
+      toast('ok', `${name} works`, `${r.user || 'Account'} · ${r.premium ? 'premium' : 'free'}${r.expires ? ' · until ' + String(r.expires).slice(0, 10) : ''}${left}`);
+    } catch (err) {
+      toast('err', `${name} failed`, String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    }
+  }
+});
+$('#acctList').addEventListener('change', async e => {
+  if (!e.target.matches('[data-acct-on]')) return;
+  const id = e.target.closest('[data-acct]').dataset.acct;
+  const accounts = { ...(settings.hostAccounts || {}) };
+  accounts[id] = { ...accounts[id], enabled: e.target.checked };
+  settings = await api.saveSettings({ hostAccounts: accounts });
+  renderAccounts();
 });
 
 function renderProvList() {
