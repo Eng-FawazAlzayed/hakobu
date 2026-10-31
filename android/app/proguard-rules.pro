@@ -16,3 +16,8 @@
 -dontwarn com.fasterxml.jackson.databind.**
 -dontwarn java.beans.**
 -keepattributes Signature, EnclosingMethod
+
+# youtubedl-android unzips its bundled Python with Apache Commons Compress, which builds the
+# zip extra-field classes by reflection. R8 stripped them and the first media download crashed.
+-keep class org.apache.commons.compress.** { *; }
+-dontwarn org.apache.commons.compress.**

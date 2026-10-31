@@ -15,6 +15,7 @@ import app.hakobu.core.Status
 import app.hakobu.core.debrid.DebridProvider
 import app.hakobu.core.debrid.RealDebrid
 import app.hakobu.core.debrid.TorBox
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,7 +31,7 @@ import java.util.concurrent.TimeUnit
 
 /** App-wide objects: the engine, settings and the hook that keeps the download service running. */
 class Hakobu(private val context: Context) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e -> Log.e("Hakobu", "Background task failed", e) })
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)

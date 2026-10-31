@@ -27,7 +27,11 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import java.io.File
 import java.io.FileInputStream
+import java.util.Collections
 import kotlin.coroutines.coroutineContext
+
+private const val SYNDICATION = "twitter:api=syndication"
+private val X_HOST = Regex("""^https?://([^/]+\.)?(x|twitter)\.com/""", RegexOption.IGNORE_CASE)
 
 /** yt-dlp (with its own Python, ffmpeg and QuickJS) running on the phone. */
 class YtDlpEngine(private val context: Context, private val store: MediaStoreFileStore) : MediaEngine {
@@ -36,10 +40,19 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
     private var ready = false
     private val json = Json { ignoreUnknownKeys = true }
 
+    // X links whose lookup only worked through the syndication API, so their download uses it too.
+    private val useSyndication: MutableSet<String> = Collections.synchronizedSet(HashSet())
+    private fun isX(url: String) = X_HOST.containsMatchIn(url)
+
     suspend fun ensureReady() = mutex.withLock {
         if (!ready) withContext(Dispatchers.IO) {
-            YoutubeDL.init(context)
-            FFmpeg.init(context)
+            try {
+                YoutubeDL.init(context)
+                FFmpeg.init(context)
+            } catch (t: Throwable) {
+                // An Error here (e.g. a class missing from the release build) must reach callers as a normal failure, not kill the app.
+                throw IllegalStateException("Couldn't start yt-dlp: ${t.message ?: t.javaClass.simpleName}", t)
+            }
             ready = true
         }
     }
@@ -67,12 +80,22 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
 
     override suspend fun info(url: String, playlist: Boolean): MediaInfo {
         ensureReady()
-        val req = YoutubeDLRequest(url)
+        fun request(syndication: Boolean) = YoutubeDLRequest(url)
             .addOption("--dump-single-json")
             .addOption("--flat-playlist")
             .addOption("--no-warnings")
+            .addOption("--socket-timeout", "20")
             .addOption(if (playlist) "--yes-playlist" else "--no-playlist")
-        val out = runInterruptible(Dispatchers.IO) { YoutubeDL.execute(req, null, false, null).out }
+            .apply { if (syndication) addOption("--extractor-args", SYNDICATION) }
+        val out = try {
+            runInterruptible(Dispatchers.IO) { YoutubeDL.execute(request(url in useSyndication), null, false, null).out }
+        } catch (e: Exception) {
+            if (e is CancellationException || !isX(url) || url in useSyndication) throw e
+            // X often stalls its guest API; its public embed (syndication) API still serves most posts.
+            Log.w("Hakobu", "X lookup failed, retrying via syndication", e)
+            useSyndication += url
+            runInterruptible(Dispatchers.IO) { YoutubeDL.execute(request(true), null, false, null).out }
+        }
         val o = json.parseToJsonElement(out) as JsonObject
         fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.ifBlank { null }
         val thumbs = (o["thumbnails"] as? JsonArray)?.mapNotNull { ((it as? JsonObject)?.get("url") as? JsonPrimitive)?.content }
@@ -105,6 +128,7 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
             .addOption("--embed-thumbnail")
             .addOption("--convert-thumbnails", "jpg")
             .addOption(if (item.playlist) "--yes-playlist" else "--no-playlist")
+            .apply { if (item.source in useSyndication) addOption("--extractor-args", SYNDICATION) }
         val fmtArgs = MediaFormats.args(item.mediaFormat ?: "mp4", item.mediaQuality ?: "1080")
         var i = 0
         while (i < fmtArgs.size) {
