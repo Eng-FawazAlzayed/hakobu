@@ -1,0 +1,400 @@
+{
+ "items": [
+  {
+   "id": "a",
+   "kind": "torrent",
+   "via": "p2p",
+   "name": "ubuntu-24.04.1-desktop-amd64.iso",
+   "size": 6203355136,
+   "downloaded": 3846080184,
+   "progress": 0.62,
+   "speed": 8650000,
+   "upSpeed": 912000,
+   "peers": 47,
+   "ratio": 0.18,
+   "status": "active",
+   "dir": "D:/Downloads",
+   "createdAt": 1,
+   "category": "Linux ISOs",
+   "tags": [
+    "lts"
+   ],
+   "files": [
+    {
+     "path": "ubuntu-24.04.1-desktop-amd64.iso",
+     "size": 6203355136
+    }
+   ],
+   "fileProgress": [
+    0.62
+   ],
+   "seeds": 31
+  },
+  {
+   "id": "b",
+   "kind": "http",
+   "via": "direct",
+   "name": "Blender-4.2-windows-x64.msi",
+   "size": 352321536,
+   "downloaded": 352321536,
+   "progress": 1,
+   "status": "completed",
+   "dir": "D:/Downloads",
+   "createdAt": 2
+  },
+  {
+   "id": "c",
+   "kind": "torrent",
+   "via": "torbox",
+   "name": "Big Buck Bunny 4K Collection",
+   "size": null,
+   "downloaded": 0,
+   "progress": 0.41,
+   "speed": 31000000,
+   "status": "resolving",
+   "remote": {
+    "state": "downloading",
+    "progress": 0.41,
+    "seeders": 112
+   },
+   "dir": "D:/Downloads",
+   "createdAt": 3
+  },
+  {
+   "id": "d",
+   "kind": "http",
+   "via": "direct",
+   "name": "Sintel.2010.1080p.mkv",
+   "package": "Open Movies",
+   "size": 1610612736,
+   "downloaded": 901943132,
+   "progress": 0.56,
+   "speed": 24500000,
+   "status": "active",
+   "parentId": "x",
+   "dir": "D:/Downloads",
+   "createdAt": 4,
+   "category": "Movies",
+   "tags": [
+    "4k"
+   ]
+  },
+  {
+   "id": "e",
+   "kind": "torrent",
+   "via": "p2p",
+   "name": "debian-12.7.0-amd64-DVD-1.iso",
+   "size": 3992977408,
+   "downloaded": 3992977408,
+   "uploaded": 5211000000,
+   "progress": 1,
+   "upSpeed": 2400000,
+   "peers": 12,
+   "ratio": 1.31,
+   "status": "seeding",
+   "dir": "D:/Downloads",
+   "createdAt": 5,
+   "category": "Linux ISOs"
+  },
+  {
+   "id": "f",
+   "kind": "http",
+   "via": "realdebrid",
+   "name": "https://rapidgator.net/file/archive.part1.rar",
+   "progress": 0,
+   "status": "error",
+   "error": "Real-Debrid: hoster_unavailable (503)",
+   "dir": "D:/Downloads",
+   "createdAt": 6
+  },
+  {
+   "id": "g",
+   "kind": "http",
+   "via": "direct",
+   "name": "node-v22.11.0-x64.msi",
+   "size": 30121984,
+   "downloaded": 9036595,
+   "progress": 0.3,
+   "status": "paused",
+   "dir": "D:/Downloads",
+   "createdAt": 7
+  },
+  {
+   "id": "h",
+   "kind": "http",
+   "via": "direct",
+   "name": "Sintel.2010.Extras.part1.rar",
+   "filename": "Sintel.2010.Extras.part1.rar",
+   "package": "Open Movies",
+   "size": 524288000,
+   "downloaded": 524288000,
+   "progress": 1,
+   "status": "completed",
+   "dir": "D:/Downloads/Open Movies",
+   "createdAt": 4.5,
+   "extract": {
+    "state": "extracting",
+    "progress": 0.43
+   }
+  },
+  {
+   "id": "i",
+   "kind": "http",
+   "via": "direct",
+   "name": "Sintel.2010.Extras.part2.rar",
+   "filename": "Sintel.2010.Extras.part2.rar",
+   "package": "Open Movies",
+   "size": 524288000,
+   "downloaded": 524288000,
+   "progress": 1,
+   "status": "completed",
+   "dir": "D:/Downloads/Open Movies",
+   "createdAt": 4.6
+  }
+ ],
+ "torrent": {
+  "kind": "torrent",
+  "source": "magnet:?xt=urn:btih:demo",
+  "name": "Open Movie Collection (2008-2024)",
+  "infoHash": "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c",
+  "size": 21474836480,
+  "cached": true,
+  "via": "p2p",
+  "files": [
+   {
+    "path": "Open Movie Collection/Big Buck Bunny/bbb_4k.mkv",
+    "size": 6442450944
+   },
+   {
+    "path": "Open Movie Collection/Big Buck Bunny/bbb.en.srt",
+    "size": 48213
+   },
+   {
+    "path": "Open Movie Collection/Sintel/sintel_1080p.mkv",
+    "size": 1610612736
+   },
+   {
+    "path": "Open Movie Collection/Sintel/soundtrack/01 - Sintel Theme.flac",
+    "size": 41943040
+   },
+   {
+    "path": "Open Movie Collection/Tears of Steel/tos_4k.mkv",
+    "size": 9663676416
+   },
+   {
+    "path": "Open Movie Collection/Spring/spring.mkv",
+    "size": 3715891200
+   },
+   {
+    "path": "Open Movie Collection/poster.jpg",
+    "size": 2097152
+   },
+   {
+    "path": "Open Movie Collection/README.txt",
+    "size": 4096
+   }
+  ],
+  "selectedFiles": [
+   0,
+   1,
+   2,
+   3,
+   6,
+   7
+  ]
+ },
+ "settings": {
+  "categories": {
+   "Linux ISOs": "D:/ISOs",
+   "Movies": "D:/Movies"
+  }
+ },
+ "rss": {
+  "feeds": [
+   {
+    "id": "f1",
+    "name": "Linux Releases",
+    "url": "https://example.org/linux.xml",
+    "refreshMin": 30,
+    "lastFetched": 1793402174504,
+    "articles": [
+     {
+      "guid": "1",
+      "title": "Fedora Workstation 41 x86_64 DVD",
+      "size": 2300000000,
+      "date": 1793398694504,
+      "isNew": true,
+      "magnet": "magnet:?xt=urn:btih:aa"
+     },
+     {
+      "guid": "2",
+      "title": "Debian 12.8.0 amd64 netinst",
+      "size": 660000000,
+      "date": 1793395094504,
+      "isNew": true,
+      "magnet": "magnet:?xt=urn:btih:bb"
+     },
+     {
+      "guid": "3",
+      "title": "Linux Mint 22 Cinnamon 64-bit",
+      "size": 2900000000,
+      "date": 1793315894504,
+      "magnet": "magnet:?xt=urn:btih:cc"
+     },
+     {
+      "guid": "4",
+      "title": "Arch Linux 2024.11.01 x86_64",
+      "size": 1200000000,
+      "date": 1793229494504,
+      "magnet": "magnet:?xt=urn:btih:dd"
+     }
+    ]
+   },
+   {
+    "id": "f2",
+    "name": "Open Movies",
+    "url": "https://example.org/movies.xml",
+    "refreshMin": 60,
+    "lastFetched": 1793401694504,
+    "articles": [
+     {
+      "guid": "5",
+      "title": "Sprite Fright 2160p",
+      "size": 5000000000,
+      "date": 1793397294504,
+      "magnet": "magnet:?xt=urn:btih:ee"
+     }
+    ]
+   }
+  ],
+  "rules": [
+   {
+    "id": "r1",
+    "name": "Debian releases",
+    "enabled": true,
+    "mustContain": "debian amd64",
+    "mustNotContain": "testing",
+    "feedIds": [
+     "f1"
+    ],
+    "category": "Linux ISOs",
+    "via": ""
+   },
+   {
+    "id": "r2",
+    "name": "4K open movies",
+    "enabled": false,
+    "mustContain": "2160p",
+    "feedIds": []
+   }
+  ]
+ },
+ "search": [
+  {
+   "title": "ubuntu-24.10-desktop-amd64.iso",
+   "size": 6000000000,
+   "seeders": 1840,
+   "peers": 1902,
+   "provider": "Jackett · linuxtracker",
+   "date": 1793393294504,
+   "magnet": "m"
+  },
+  {
+   "title": "debian-12.8.0-amd64-DVD-1.iso",
+   "size": 3900000000,
+   "seeders": 211,
+   "peers": 230,
+   "provider": "Prowlarr · distro",
+   "date": 1793362294504,
+   "magnet": "m"
+  },
+  {
+   "title": "archlinux-2024.11.01-x86_64.iso",
+   "size": 1200000000,
+   "seeders": 38,
+   "peers": 41,
+   "provider": "Jackett · linuxtracker",
+   "date": 1793202294504,
+   "magnet": "m"
+  },
+  {
+   "title": "kali-linux-2024.3-installer-amd64.iso",
+   "size": 4100000000,
+   "seeders": 3,
+   "peers": 9,
+   "provider": "Prowlarr · distro",
+   "date": 1792502294504,
+   "magnet": "m"
+  }
+ ],
+ "grab": [
+  {
+   "kind": "http",
+   "source": "https://rapidgator.net/file/abc/Show.S02.part1.rar",
+   "name": "Show.S02.1080p.part1.rar",
+   "pkg": "Show.S02.1080p",
+   "via": "torbox",
+   "hoster": true,
+   "sel": true,
+   "size": 2147483648,
+   "check": {
+    "status": "online",
+    "host": "rapidgator.net"
+   }
+  },
+  {
+   "kind": "http",
+   "source": "https://rapidgator.net/file/def/Show.S02.part2.rar",
+   "name": "Show.S02.1080p.part2.rar",
+   "pkg": "Show.S02.1080p",
+   "via": "torbox",
+   "hoster": true,
+   "sel": true,
+   "size": 2147483648,
+   "check": {
+    "status": "online",
+    "host": "rapidgator.net"
+   }
+  },
+  {
+   "kind": "http",
+   "source": "https://rapidgator.net/file/ghi/Show.S02.part3.rar",
+   "name": "Show.S02.1080p.part3.rar",
+   "pkg": "Show.S02.1080p",
+   "via": "torbox",
+   "hoster": true,
+   "sel": true,
+   "size": 1073741824,
+   "check": {
+    "status": "checking"
+   },
+   "archivePasswords": [
+    "pw"
+   ]
+  },
+  {
+   "kind": "http",
+   "source": "https://cdn.example.org/tools/setup-x64.exe",
+   "name": "setup-x64.exe",
+   "pkg": "setup-x64",
+   "via": "direct",
+   "sel": true,
+   "size": 88080384,
+   "check": {
+    "status": "online"
+   }
+  },
+  {
+   "kind": "http",
+   "source": "https://dead.example.org/old.zip",
+   "name": "old.zip",
+   "pkg": "old",
+   "via": "direct",
+   "sel": false,
+   "check": {
+    "status": "offline",
+    "error": "HTTP 404 Not Found"
+   }
+  }
+ ]
+}

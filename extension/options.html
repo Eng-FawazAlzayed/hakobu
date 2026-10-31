@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Hakobu extension settings</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body class="options">
+  <header><img src="icons/48.png" alt="" /><div><b>Hakobu</b><small>Browser extension settings</small></div></header>
+  <p>Copy the port and token from Hakobu → Settings → Browser extension.</p>
+  <label>Port <input id="port" type="number" min="1" max="65535" /></label>
+  <label>Token <input id="token" type="password" autocomplete="off" /></label>
+  <label class="switch"><input type="checkbox" id="captureMagnets" /><i></i>Catch magnet link clicks</label>
+  <label class="switch"><input type="checkbox" id="captureDownloads" /><i></i>Catch browser downloads</label>
+  <label>…only files larger than (MB) <input id="captureMinMB" type="number" min="0" /></label>
+  <div class="row"><button id="save" class="primary">Save &amp; test</button><span id="result"></span></div>
+  <script src="options.js"></script>
+</body>
+</html>

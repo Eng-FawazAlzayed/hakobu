@@ -1,0 +1,95 @@
+/* ============ Performance ============
+   The look stays the same; the expensive parts go away.
+   1. The background glow uses soft gradients instead of a live 110px blur filter (which re-rendered every frame).
+   2. While Hakobu isn't focused, or is minimized, the looping animations pause (html.idle).
+      One-shot animations (cards fading in, toasts) still play, so nothing is left half-drawn. */
+
+.ambient i {
+  filter: none;
+  width: 980px;
+  height: 980px;
+  /* Still, not drifting: anything moving behind the frosted sidebar forces it to be re-blurred every frame. */
+  animation: none !important;
+}
+
+/* Hidden dialogs and overlays stay in the page (transparent) so they can fade in; nothing inside them may animate until shown. */
+.modal:not(.show) *,
+.modal:not(.show) *::before,
+.modal:not(.show) *::after,
+.drop:not(.show) *,
+.tdlg-loading.gone * {
+  animation: none !important;
+}
+/* Decorative empty-state motion: the slow spin of the dashed ring is dropped; the gentle float stays (and pauses when idle). */
+.empty-art::after {
+  animation: none !important;
+}
+.ambient i:first-child {
+  top: -520px;
+  right: -360px;
+  opacity: 0.32;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--accent) 60%, transparent) 0%, color-mix(in srgb, var(--accent) 18%, transparent) 38%, transparent 66%);
+}
+.ambient i:last-child {
+  bottom: -560px;
+  left: -60px;
+  opacity: 0.22;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--accent-2) 55%, transparent) 0%, color-mix(in srgb, var(--accent-2) 16%, transparent) 38%, transparent 66%);
+}
+
+/* Calm by default: nothing loops forever.
+   Measured with a real download: ANY endless animation keeps the window recompositing at 60 fps, which cost
+   35-45% of a CPU core while focused, no matter how small the animated thing was. With none running: ~3%.
+   Interactions (hover, view changes, cards entering, toasts, dialogs) still animate; those are short bursts. */
+.type .ring,
+.bar > i::after,
+.status::before,
+.empty-art,
+.drop .ico {
+  animation: none !important;
+}
+/* the active-download ring becomes a steady glow instead of a pulse */
+.is-active .type .ring {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+/* progress bars step to each new value once a second (like qBittorrent): even a 0.25 s glide every second
+   measured ~20% of a core while focused */
+.bar > i,
+.fbar i {
+  transition: background 0.4s var(--ease) !important;
+}
+/* Frosted-glass sidebar only where glass is the point (Aero). Elsewhere the still background behind it
+   makes the blur invisible anyway, and it made every frame much more expensive. */
+:root:not([data-theme="aero"]) .sidebar {
+  backdrop-filter: none;
+}
+
+/* A dialog's backdrop blurs the whole window; anything still moving underneath would force that full-window
+   blur to be redone every frame. So while a dialog is open, the page behind it holds still. */
+html:has(.modal.show) main *,
+html:has(.modal.show) main *::before,
+html:has(.modal.show) main *::after,
+html:has(.modal.show) .sidebar * {
+  animation-play-state: paused !important;
+}
+
+/* Only the animations that loop forever */
+html.idle .ambient i,
+html.idle .type .ring,
+html.idle .bar > i,
+html.idle .bar > i::after,
+html.idle .fbar i,
+html.idle .status::before,
+html.idle .empty-art,
+html.idle .empty-art::after,
+html.idle .spinner,
+html.idle .drop .ico,
+html.idle .tool.active .bar > i::after,
+html.idle .dl-pkg .bar > i::after {
+  animation-play-state: paused !important;
+}
+
+/* the 運 logo (rendered by build/make-icon.js) */
+.brand-logo { width: 34px; height: 34px; margin-left: -2px; filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.brand .brand-sub { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: -4px; }

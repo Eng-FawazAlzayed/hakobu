@@ -1,0 +1,90 @@
+{
+  "name": "hakobu",
+  "productName": "Hakobu",
+  "version": "0.1.0",
+  "description": "Hakobu (運ぶ, \"to carry\"): direct downloads, torrents, YouTube & media, with TorBox / Real-Debrid support",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/smoke.mjs && node test/feeds.mjs && node test/extract.mjs && node test/api.mjs && node test/hosts.mjs && node test/media.mjs",
+    "dist": "node build/dist.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "7zip-bin": "^5.2.0",
+    "node-unrar-js": "^2.0.2",
+    "webtorrent": "^3.0.21"
+  },
+  "devDependencies": {
+    "electron": "^45.2.0",
+    "electron-builder": "^26.18.0"
+  },
+  "author": "Hakobu",
+  "build": {
+    "appId": "app.hakobu.downloadmanager",
+    "productName": "Hakobu",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!node_modules/7zip-bin/mac/**",
+      "!node_modules/7zip-bin/linux/**",
+      "!node_modules/7zip-bin/win/ia32/**",
+      "!node_modules/7zip-bin/win/arm64/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Hakobu-Setup-${version}.exe",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Hakobu-${version}-portable.exe"
+    },
+    "fileAssociations": [
+      {
+        "ext": "torrent",
+        "name": "Torrent file",
+        "role": "Viewer"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Magnet link",
+        "schemes": [
+          "magnet"
+        ]
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "extension",
+        "to": "extension"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/7zip-bin/**"
+    ]
+  }
+}

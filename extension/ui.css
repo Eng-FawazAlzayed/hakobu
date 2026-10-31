@@ -1,0 +1,24 @@
+:root { --bg: #0f1117; --surface: #1a1d26; --border: #2a2f3c; --text: #eceef4; --muted: #8a90a3; --accent: #7c8cff; --accent-2: #b38bff; --green: #4ad295; --red: #ff6b7a; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f6f7fb; --surface: #fff; --border: #e3e5ee; --text: #161a26; --muted: #6b7185; color-scheme: light; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13.5px/1.45 "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px; }
+body.popup { width: 290px; padding: 14px; }
+body.options { max-width: 460px; margin: 30px auto; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+header { display: flex; gap: 10px; align-items: center; }
+header img { width: 34px; height: 34px; }
+header b { display: block; font-size: 15px; }
+small { color: var(--muted); }
+.ok { color: var(--green); } .bad { color: var(--red); }
+button { font: inherit; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; padding: 0 14px; }
+button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: #fff; font-weight: 600; }
+label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-weight: 550; font-size: 12.5px; }
+input:not([type="checkbox"]) { font: inherit; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 10px; }
+.switch { flex-direction: row; align-items: center; gap: 10px; color: var(--text); font-weight: 450; font-size: 13px; cursor: pointer; }
+.switch input { display: none; }
+.switch i { position: relative; width: 34px; height: 19px; border-radius: 99px; background: var(--border); transition: background .25s; flex-shrink: 0; }
+.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: transform .3s cubic-bezier(.34,1.56,.64,1); }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(15px); }
+a { color: var(--accent); font-size: 12.5px; text-decoration: none; }
+.row { display: flex; gap: 10px; align-items: center; }
+p { margin: 0; color: var(--muted); }

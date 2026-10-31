@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>Setting up Hakobu</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { flex-direction: column; padding: 26px 28px; gap: 18px; overflow: hidden; }
+    .head { display: flex; align-items: center; gap: 14px; }
+    .head h1 { margin: 0; font-size: 18px; font-weight: 650; }
+    .head p { margin: 2px 0 0; color: var(--text-3); font-size: 12.5px; }
+    .tools { display: flex; flex-direction: column; gap: 10px; }
+    .tool { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); animation: rowIn var(--slow) var(--ease) backwards; }
+    .tool:nth-child(2) { animation-delay: 60ms; } .tool:nth-child(3) { animation-delay: 120ms; }
+    .tool b { font-weight: 600; }
+    .tool span { color: var(--text-3); font-size: 12px; text-align: right; }
+    .tool .bar { grid-column: 1 / -1; }
+    .tool.done span { color: var(--green); }
+    .tool.error span { color: var(--red); }
+    .tool.done .bar > i { background: linear-gradient(90deg, var(--green), #6ee7b7); }
+    .tool.active .bar > i::after { opacity: 1; animation: shimmer 1.8s var(--ease) infinite; }
+    .foot { margin-top: auto; color: var(--text-3); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><i></i><i></i></div>
+  <div class="head">
+    <img src="logo.png" alt="" style="width:46px;height:46px" />
+    <div><h1>Getting the newest tools</h1><p>Downloaded from their official sources and checked before use.</p></div>
+  </div>
+  <div class="tools" id="tools">
+    <div class="tool" data-tool="yt-dlp"><b>yt-dlp</b><span>waiting</span><div class="bar"><i></i></div></div>
+    <div class="tool" data-tool="deno"><b>Deno</b><span>waiting</span><div class="bar"><i></i></div></div>
+    <div class="tool" data-tool="ffmpeg"><b>ffmpeg</b><span>waiting</span><div class="bar"><i></i></div></div>
+  </div>
+  <div class="foot" id="foot">yt-dlp downloads from YouTube and other sites, Deno solves YouTube's player checks, ffmpeg converts to MP3 and merges video.</div>
+  <script src="setup.js"></script>
+</body>
+</html>

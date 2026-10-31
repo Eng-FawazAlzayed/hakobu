@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:" />
+  <title>Hakobu 運ぶ</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <link rel="stylesheet" href="jd.css" />
+  <link rel="stylesheet" href="perf.css" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><i></i><i></i></div>
+
+  <aside class="sidebar">
+    <div class="brand drag">
+      <img class="brand-logo" src="logo.png" alt="" />
+      <span>Hakobu</span><span class="brand-sub">運ぶ</span>
+    </div>
+
+    <nav class="nav" id="nav">
+      <span class="indicator" id="navIndicator"></span>
+      <button data-view="downloads" class="active"><svg data-icon="download"></svg><span>Downloads</span></button>
+      <button data-view="grabber"><svg data-icon="link"></svg><span>LinkGrabber</span><b id="grabCount" class="count hidden">0</b></button>
+      <button data-view="search"><svg data-icon="search"></svg><span>Search</span></button>
+      <button data-view="rss"><svg data-icon="rss"></svg><span>RSS</span><b id="rssCount" class="count hidden">0</b></button>
+      <button data-view="settings"><svg data-icon="settings"></svg><span>Settings</span></button>
+    </nav>
+
+    <div class="nav filters" id="filters">
+      <span class="indicator" id="filterIndicator"></span>
+      <div class="label">Library</div>
+      <button data-filter="all" class="active"><span class="dot d-all"></span><span>All</span><b></b></button>
+      <button data-filter="downloading"><span class="dot d-active"></span><span>Downloading</span><b></b></button>
+      <button data-filter="seeding"><span class="dot d-seed"></span><span>Seeding</span><b></b></button>
+      <button data-filter="completed"><span class="dot d-done"></span><span>Completed</span><b></b></button>
+      <button data-filter="paused"><span class="dot d-paused"></span><span>Paused</span><b></b></button>
+      <button data-filter="error"><span class="dot d-error"></span><span>Errors</span><b></b></button>
+      <div class="label">Source</div>
+      <button data-filter="direct"><svg data-icon="globe"></svg><span>Direct</span><b></b></button>
+      <button data-filter="p2p"><svg data-icon="magnet"></svg><span>Torrents</span><b></b></button>
+      <button data-filter="debrid"><svg data-icon="cloud"></svg><span>Debrid</span><b></b></button>
+      <button data-filter="media"><svg data-icon="youtube"></svg><span>YouTube &amp; media</span><b></b></button>
+      <div id="catFilters"></div>
+    </div>
+
+    <div class="speedcard">
+      <div class="speedrow">
+        <div><small>Download</small><strong id="stDown">0 B/s</strong></div>
+        <div><small>Upload</small><strong id="stUp">0 B/s</strong></div>
+      </div>
+      <svg id="spark" viewBox="0 0 200 48" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sparkFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity=".35" />
+            <stop offset="1" stop-color="var(--accent)" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <path id="sparkArea" fill="url(#sparkFill)" />
+        <path id="sparkUp" class="up" fill="none" />
+        <path id="sparkLine" fill="none" />
+      </svg>
+      <div class="speed-foot">
+        <div class="debrid-state" id="stDebrid"></div>
+        <button class="turtle" id="btnTurtle" title="Alternative speed limits"><svg data-icon="turtle"></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar drag">
+      <h1 id="viewTitle">Downloads</h1>
+      <div class="search nodrag"><svg data-icon="search"></svg><input id="search" type="search" placeholder="Search downloads" /></div>
+      <button id="btnAddLinks" class="btn primary nodrag"><svg data-icon="plus"></svg>Add links</button>
+    </header>
+
+    <!-- ================= Downloads ================= -->
+    <section id="view-downloads" class="view">
+      <div class="actionbar" id="actionbar">
+        <span id="selInfo" class="muted">Select downloads to manage them</span>
+        <label class="switch small" title="Group files of the same package"><input type="checkbox" id="groupPkgs" /><i></i>Packages</label>
+        <span class="grow"></span>
+        <label class="btn ghost" title="Add .torrent file"><svg data-icon="file"></svg>.torrent<input id="torrentInput" type="file" accept=".torrent" multiple hidden /></label>
+        <span class="divider"></span>
+        <button class="btn ghost" data-act="resume" title="Resume"><svg data-icon="play"></svg></button>
+        <button class="btn ghost" data-act="pause" title="Pause"><svg data-icon="pause"></svg></button>
+        <button class="btn ghost" data-act="seed" title="Seed finished torrent"><svg data-icon="upload"></svg></button>
+        <button class="btn ghost" data-act="open" title="Show in folder"><svg data-icon="folder"></svg></button>
+        <button class="btn ghost" data-act="extract" title="Extract archives now"><svg data-icon="archive"></svg></button>
+        <button class="btn ghost" data-act="remove" title="Remove from list"><svg data-icon="x"></svg></button>
+        <button class="btn ghost danger" data-act="delete" title="Delete files"><svg data-icon="trash"></svg></button>
+      </div>
+
+      <div class="list-wrap">
+        <div id="list" class="list"></div>
+        <div id="empty" class="empty">
+          <div class="empty-art"><svg data-icon="download"></svg></div>
+          <h2>Nothing downloading yet</h2>
+          <p>Paste links, magnets or info hashes with <kbd>Ctrl</kbd> <kbd>V</kbd>, or drop .torrent files anywhere.</p>
+          <button class="btn primary" id="btnEmptyAdd"><svg data-icon="plus"></svg>Add links</button>
+        </div>
+      </div>
+      <div id="details" class="details">
+        <div class="tabs" id="detailTabs">
+          <span class="tab-ind"></span>
+          <button data-tab="general" class="on">General</button>
+          <button data-tab="files">Files</button>
+          <button data-tab="peers">Peers</button>
+          <button data-tab="trackers">Trackers</button>
+          <button data-tab="options">Options</button>
+        </div>
+        <div class="details-inner" id="detailBody"></div>
+      </div>
+    </section>
+
+    <!-- ================= LinkGrabber ================= -->
+    <section id="view-grabber" class="view hidden">
+      <div class="card grab-input">
+        <textarea id="grabText" placeholder="Paste anything: YouTube & media links, direct links, hoster links (Mega, Rapidgator, BuzzHeavier…), magnets, .torrent URLs, info hashes…"></textarea>
+        <div class="grab-actions">
+          <label class="btn ghost"><svg data-icon="file"></svg>.torrent files<input id="torrentInput2" type="file" accept=".torrent" multiple hidden /></label>
+          <span class="grow"></span>
+          <button class="btn ghost hidden" id="btnRemoveOffline">Remove offline</button><button class="btn ghost" id="btnClearGrab">Clear list</button>
+          <button class="btn primary" id="btnAnalyze"><svg data-icon="sparkle"></svg>Analyze</button>
+        </div>
+      </div>
+
+      <div class="grab-opts">
+        <label class="field grow"><span>Save to</span><input id="grabDir" /></label>
+        <button class="btn ghost" id="btnGrabDir"><svg data-icon="folder"></svg></button>
+        <label class="switch"><input type="checkbox" id="grabPaused" /><i></i>Add paused</label>
+      </div>
+
+      <div class="list-wrap">
+        <div id="grabList" class="list"></div>
+        <div id="grabEmpty" class="empty small">
+          <div class="empty-art"><svg data-icon="link"></svg></div>
+          <h2>LinkGrabber is empty</h2>
+          <p>Grabbed links wait here so you can choose how each one downloads.</p>
+        </div>
+      </div>
+      <div class="footerbar">
+        <label class="switch"><input type="checkbox" id="grabSelAll" checked /><i></i>Select all</label>
+        <label class="switch" title="Copied links land here for approval"><input type="checkbox" id="grabClip" /><i></i>Watch clipboard</label>
+        <span class="muted" id="grabSummary"></span>
+        <span class="grow"></span>
+        <button id="btnGrabStart" class="btn primary"><svg data-icon="play"></svg>Start selected</button>
+      </div>
+    </section>
+
+    <!-- ================= Search ================= -->
+    <section id="view-search" class="view hidden">
+      <form class="card searchbar" id="searchForm">
+        <svg data-icon="search"></svg>
+        <input id="searchQ" placeholder="Search torrents across your Jackett / Prowlarr indexers" autocomplete="off" />
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <div class="search-meta"><span id="searchInfo" class="muted"></span><span class="grow"></span>
+        <label class="field inline"><span>Min seeders</span><input type="number" id="searchMinSeeds" min="0" value="0" /></label>
+        <label class="field inline"><span>Filter</span><input id="searchFilter" placeholder="in results" /></label>
+      </div>
+      <div class="list-wrap">
+        <div class="results" id="searchResults"></div>
+        <div id="searchEmpty" class="empty small">
+          <div class="empty-art"><svg data-icon="search"></svg></div>
+          <h2>Search torrents</h2>
+          <p>Uses Torznab, the same thing qBittorrent's Jackett plugin uses. Add your Jackett or Prowlarr URL under Settings → Search providers.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RSS ================= -->
+    <section id="view-rss" class="view hidden">
+      <div class="rss">
+        <div class="rss-side">
+          <div class="card rss-box">
+            <div class="rss-head"><h3>Feeds</h3><span class="grow"></span><button class="btn ghost sq" id="feedRefreshAll" title="Refresh all"><svg data-icon="refresh"></svg></button></div>
+            <form class="rss-add" id="feedAddForm"><input id="feedUrl" placeholder="Paste a feed URL" /><button class="btn ghost sq" title="Add feed"><svg data-icon="plus"></svg></button></form>
+            <div class="rss-list" id="feedList"></div>
+          </div>
+          <div class="card rss-box">
+            <div class="rss-head"><h3>Auto-download rules</h3><span class="grow"></span><button class="btn ghost sq" id="ruleNew" title="New rule"><svg data-icon="plus"></svg></button></div>
+            <div class="rss-list" id="ruleList"></div>
+          </div>
+        </div>
+        <div class="card rss-main" id="rssMain"></div>
+      </div>
+    </section>
+
+    <!-- ================= Settings ================= -->
+    <section id="view-settings" class="view hidden">
+      <form id="settingsForm" class="settings">
+        <div class="card">
+          <h3><svg data-icon="settings"></svg>Appearance &amp; general</h3>
+          <div class="field"><span>Theme</span>
+            <div class="themes" id="themes">
+              <button type="button" class="theme-opt" data-theme-opt="system"><i class="sw-system"></i>System</button>
+              <button type="button" class="theme-opt" data-theme-opt="dark"><i class="sw-dark"></i>Dark</button>
+              <button type="button" class="theme-opt" data-theme-opt="oled"><i class="sw-oled"></i>OLED</button>
+              <button type="button" class="theme-opt" data-theme-opt="light"><i class="sw-light"></i>Light</button>
+              <button type="button" class="theme-opt" data-theme-opt="aero"><i class="sw-aero"></i>Aero</button>
+            </div>
+          </div>
+          <label class="field"><span>Download folder</span><span class="hrow"><input name="downloadDir" /><button type="button" class="btn ghost" id="btnDir"><svg data-icon="folder"></svg></button></span></label>
+          <label class="field"><span>Global download limit <em>KB/s · 0 = unlimited</em></span><input type="number" name="dlLimitKB" min="0" /></label>
+          <label class="switch"><input type="checkbox" name="clipboardMonitor" /><i></i>Watch clipboard for links</label>
+          <button type="button" class="btn ghost" id="btnMagnet"><svg data-icon="magnet"></svg>Open magnet: links with Hakobu</button>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="globe"></svg>Direct downloads</h3>
+          <div class="row2">
+            <label class="field"><span>Simultaneous</span><input type="number" name="maxConcurrent" min="1" max="20" /></label>
+            <label class="field"><span>Connections each</span><input type="number" name="connectionsPerDownload" min="1" max="32" /></label>
+          </div>
+          <label class="field"><span>Hoster links (Mega, Rapidgator…)</span>
+            <select name="httpRoute">
+              <option value="auto">Auto: debrid for known hosters</option>
+              <option value="direct">Always direct</option>
+              <option value="torbox">Always TorBox</option>
+              <option value="realdebrid">Always Real-Debrid</option>
+            </select>
+          </label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="magnet"></svg>Torrents</h3>
+          <label class="field"><span>Default route</span>
+            <select name="torrentRoute">
+              <option value="p2p">P2P on this PC</option>
+              <option value="torbox">TorBox (cloud → direct)</option>
+              <option value="realdebrid">Real-Debrid (cloud → direct)</option>
+            </select>
+          </label>
+          <div class="row2">
+            <label class="field"><span>Active torrents</span><input type="number" name="maxActiveTorrents" min="1" max="50" /></label>
+            <label class="field"><span>Upload limit <em>KB/s</em></span><input type="number" name="ulLimitKB" min="0" /></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Seed until ratio <em>0 off · -1 ∞</em></span><input type="number" name="seedRatio" step="0.1" min="-1" /></label>
+            <label class="field"><span>Port <em>0 = random</em></span><input type="number" name="torrentPort" min="0" max="65535" /></label>
+          </div>
+          <p class="hint" id="peerInfo"></p>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="turtle"></svg>Speed scheduler</h3>
+          <div class="row2">
+            <label class="field"><span>Alt. download <em>KB/s</em></span><input type="number" name="altDlKB" min="0" /></label>
+            <label class="field"><span>Alt. upload <em>KB/s</em></span><input type="number" name="altUlKB" min="0" /></label>
+          </div>
+          <label class="switch"><input type="checkbox" id="schEnabled" /><i></i>Use alternative limits on a schedule</label>
+          <div class="row2">
+            <label class="field"><span>From</span><input type="time" id="schFrom" /></label>
+            <label class="field"><span>To</span><input type="time" id="schTo" /></label>
+          </div>
+          <div class="days" id="schDays"></div>
+          <label class="field"><span>Stop seeding after <em>minutes · 0 = no limit</em></span><input type="number" name="seedTimeMin" min="0" /></label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="youtube"></svg>YouTube &amp; media</h3>
+          <p class="hint">YouTube, Vimeo, SoundCloud, X, TikTok and about 1,800 other sites, through yt-dlp. MP3s get cover art and tags.</p>
+          <div class="row2">
+            <label class="field"><span>Default format</span><select name="ytFormat"><option value="mp4">MP4 video</option><option value="mp3">MP3 audio</option></select></label>
+            <label class="field"><span>Simultaneous</span><input type="number" name="maxConcurrentMedia" min="1" max="6" /></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Video quality</span><select name="ytVideoQuality"><option value="2160">4K (2160p)</option><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option><option value="best">Best available</option></select></label>
+            <label class="field"><span>MP3 quality</span><select name="ytAudioQuality"><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="192">192 kbps</option><option value="128">128 kbps</option></select></label>
+          </div>
+          <label class="field"><span>Use cookies from browser <em>fixes "confirm you're not a bot" and age checks</em></span>
+            <select name="ytCookiesBrowser"><option value="">Don't use cookies</option><option value="firefox">Firefox (works best)</option><option value="edge">Edge</option><option value="chrome">Chrome</option><option value="brave">Brave</option></select></label>
+          <div class="tools-list" id="toolsList"></div>
+          <div class="hrow"><button type="button" class="btn ghost" id="toolsCheck"><svg data-icon="refresh"></svg>Check for updates</button><button type="button" class="btn ghost" id="toolsRepair"><svg data-icon="download"></svg>Reinstall all</button></div>
+          <label class="switch"><input type="checkbox" name="autoUpdateTools" /><i></i>Update yt-dlp, Deno and ffmpeg automatically (daily check)</label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="archive"></svg>Archive extraction</h3>
+          <label class="switch"><input type="checkbox" name="autoExtract" /><i></i>Extract ZIP, RAR and 7z automatically when a package finishes</label>
+          <label class="switch"><input type="checkbox" name="extractSubfolder" /><i></i>Extract into a folder named after the archive</label>
+          <label class="switch"><input type="checkbox" name="deleteArchives" /><i></i>Delete archive files after extracting (never for torrents)</label>
+          <label class="switch"><input type="checkbox" name="packageSubfolder" /><i></i>Save multi-file packages in their own folder</label>
+          <label class="field"><span>Password list <em>one per line · tried in order</em></span><textarea id="pwList" rows="4" placeholder="www.example.org&#10;secret123"></textarea></label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="globe"></svg>Browser extension &amp; Click'n'Load</h3>
+          <p class="hint">Send links, magnets and downloads from Chrome or Edge. Install the extension with "Load unpacked" from the folder below, then paste the token in its settings.</p>
+          <div class="api-status" id="apiStatus"></div>
+          <div class="row2">
+            <label class="field"><span>Port</span><input type="number" name="apiPort" min="1024" max="65535" /></label>
+            <label class="field"><span>Token</span><span class="hrow"><input id="apiToken" readonly /><button type="button" class="btn ghost sq" id="copyToken" title="Copy"><svg data-icon="file"></svg></button></span></label>
+          </div>
+          <div class="hrow"><button type="button" class="btn ghost" id="openExt"><svg data-icon="folder"></svg>Open extension folder</button><button type="button" class="btn ghost" id="newToken"><svg data-icon="refresh"></svg>New token</button></div>
+          <label class="switch"><input type="checkbox" name="cnlEnabled" /><i></i>Click'n'Load (port 9666): link sites can send links to LinkGrabber</label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="play"></svg>Download scheduler</h3>
+          <div class="mini-list" id="jobList"></div>
+          <div class="hrow">
+            <input type="time" id="jobTime" value="01:00" style="max-width:120px" />
+            <select id="jobAction"><option value="start">Start downloads</option><option value="pause">Pause downloads</option><option value="turtle-on">Turtle mode on</option><option value="turtle-off">Turtle mode off</option></select>
+            <button type="button" class="btn ghost sq" id="jobAdd"><svg data-icon="plus"></svg></button>
+          </div>
+          <div class="days" id="jobDays"></div>
+          <label class="field"><span>When all downloads finish <em>one time, then resets</em></span>
+            <select name="whenDone"><option value="none">Do nothing</option><option value="quit">Quit Hakobu</option><option value="sleep">Sleep the PC</option><option value="shutdown">Shut down the PC</option></select></label>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="tag"></svg>Categories</h3>
+          <p class="hint">A category can send its downloads to its own folder.</p>
+          <div class="mini-list" id="catList"></div>
+          <div class="hrow"><input id="catName" placeholder="Name, e.g. Movies" /><input id="catPath" placeholder="Folder (optional)" /><button type="button" class="btn ghost sq" id="catPick"><svg data-icon="folder"></svg></button><button type="button" class="btn ghost sq" id="catAdd"><svg data-icon="plus"></svg></button></div>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="search"></svg>Search providers</h3>
+          <p class="hint">Torznab URLs from Jackett ("Copy Torznab Feed") or Prowlarr (indexer → API URL), plus the API key.</p>
+          <div class="mini-list" id="provList"></div>
+          <div class="hrow"><input id="provUrl" placeholder="http://localhost:9117/api/v2.0/indexers/all/results/torznab" /><input id="provKey" placeholder="API key" style="max-width:140px" /><button type="button" class="btn ghost sq" id="provAdd"><svg data-icon="plus"></svg></button></div>
+        </div>
+        <div class="card">
+          <h3><svg data-icon="cloud"></svg>Debrid</h3>
+          <label class="field"><span>Preferred provider</span>
+            <select name="preferredDebrid"><option value="torbox">TorBox</option><option value="realdebrid">Real-Debrid</option></select>
+          </label>
+          <label class="field"><span>TorBox API key <em>torbox.app → Settings</em></span><span class="hrow"><input name="torboxKey" type="password" autocomplete="off" /><button type="button" class="btn ghost" data-test="torbox">Test</button></span></label>
+          <label class="switch"><input type="checkbox" name="debridFallback" /><i></i>If debrid fails, retry without it (P2P for torrents, direct for links, up to 2 tries)</label>
+          <label class="field"><span>Real-Debrid token <em>real-debrid.com/apitoken</em></span><span class="hrow"><input name="realdebridToken" type="password" autocomplete="off" /><button type="button" class="btn ghost" data-test="realdebrid">Test</button></span></label>
+          <p class="hint">Keys are encrypted with Windows DPAPI and only sent to the provider's own API.</p>
+        </div>
+        <div class="card hosts-card">
+          <h3><svg data-icon="cloud"></svg>What each debrid service unlocks<span class="grow"></span>
+            <div class="search mini-search"><svg data-icon="search"></svg><input id="hostFilter" type="search" placeholder="Find a host, e.g. rapidgator" /></div>
+            <button type="button" class="btn ghost sq" id="hostRefresh" title="Refresh lists"><svg data-icon="refresh"></svg></button></h3>
+          <p class="hint" id="hostHint">Hover an icon to see the host. Dimmed icons are currently down at that service.</p>
+          <div class="hosts-row"><div class="hosts-head"><span class="prov prov-tb">TorBox</span><span class="muted" id="tbCount"></span><span class="muted" id="tbState"></span></div><div class="host-grid" id="tbHosts"></div></div>
+          <div class="hosts-row"><div class="hosts-head"><span class="prov prov-rd">Real-Debrid</span><span class="muted" id="rdCount"></span><span class="muted" id="rdState"></span></div><div class="host-grid" id="rdHosts"></div></div>
+        </div>
+        <div class="savebar"><button class="btn primary" type="submit"><svg data-icon="check"></svg>Save changes</button></div>
+      </form>
+    </section>
+  </main>
+
+  <div id="dropHint" class="drop"><div><svg data-icon="download"></svg><p>Drop to add</p></div></div>
+  <div id="toasts" class="toasts"></div>
+  <div id="modal" class="modal"><div class="dialog"><h3 id="modalTitle"></h3><p id="modalText"></p><div class="hrow end"><button class="btn ghost" id="modalNo">Cancel</button><button class="btn danger-fill" id="modalYes">Delete</button></div></div></div>
+
+  <div id="toolsDlg" class="modal">
+    <div class="dialog">
+      <h3>Set up YouTube &amp; media downloads?</h3>
+      <p>Hakobu needs three free tools for this: <b>yt-dlp</b> (the downloader), <b>Deno</b> (YouTube requires it) and <b>ffmpeg</b> (MP3 conversion). They're downloaded from their official sites and checked before use, about 150 MB.</p>
+      <div class="tools-list" id="toolsDlgList"></div>
+      <div class="hrow end"><button class="btn ghost" id="toolsLater">Later</button><button class="btn primary" id="toolsNow"><svg data-icon="download"></svg>Install now</button></div>
+    </div>
+  </div>
+
+  <div id="torrentDlg" class="modal">
+    <div class="dialog tdlg">
+      <div class="tdlg-head">
+        <div class="type t-p2p"><svg data-icon="magnet"></svg></div>
+        <div class="grow" style="min-width:0">
+          <h3 id="tdName">Torrent</h3>
+          <div class="meta" id="tdMeta"></div>
+        </div>
+        <span id="tdQueue" class="chip hidden"></span>
+      </div>
+
+      <div class="tdlg-opts">
+        <div class="field"><span>Download via</span>
+          <div class="seg" id="tdRoute">
+            <button type="button" data-route="p2p"><svg data-icon="magnet"></svg>P2P</button>
+            <button type="button" data-route="torbox"><svg data-icon="cloud"></svg>TorBox</button>
+            <button type="button" data-route="realdebrid"><svg data-icon="cloud"></svg>Real-Debrid</button>
+          </div>
+        </div>
+        <label class="field"><span>Category</span><select id="tdCat"></select></label>
+        <label class="switch" style="height:36px"><input type="checkbox" id="tdSeq" /><i></i>Sequential</label>
+        <label class="field grow"><span>Save to</span><span class="hrow"><input id="tdDir" /><button type="button" class="btn ghost" id="tdDirBtn"><svg data-icon="folder"></svg></button></span></label>
+      </div>
+
+      <div class="tdlg-files">
+        <div class="tdlg-tools">
+          <span class="check on" id="tdAll"><svg data-icon="check"></svg></span>
+          <span class="muted" id="tdSel">Loading…</span>
+          <span class="grow"></span>
+          <div class="search"><svg data-icon="search"></svg><input id="tdFilter" type="search" placeholder="Filter files" /></div>
+        </div>
+        <div class="tree" id="tdTree"></div>
+        <div class="tdlg-loading" id="tdLoading"><span class="spinner"></span><p>Fetching the file list from peers…</p><small class="muted">You can download now without picking, or wait.</small></div>
+      </div>
+
+      <div class="hrow end">
+        <button type="button" class="btn ghost" id="tdSkip">Discard</button>
+        <button type="button" class="btn ghost" id="tdGrab">Keep in LinkGrabber</button>
+        <button type="button" class="btn primary" id="tdStart"><svg data-icon="download"></svg>Download</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="icons.js"></script>
+  <script src="renderer.js"></script>
+  <script src="torrent-dialog.js"></script>
+  <script src="feeds-ui.js"></script>
+</body>
+</html>
