@@ -243,11 +243,11 @@ function torznabUrl(base, apikey, q) {
 
 // Local plugins: <profile>/plugins/*.js. They live only in the user's own profile folder, are never bundled,
 // and run with the app's rights, like qBittorrent's search plugins. A plugin exports any of:
-//   name, search(query) -> [{ title, magnet?, torrentUrl?, size?, seeders?, selectedFiles? }]
+//   name, description, version (shown in Settings → Plugins), search(query) -> [{ title, magnet?, torrentUrl?, size?, seeders?, selectedFiles? }]
 //   source: a catalogue shown in the sidebar under Source {
 //     title, icon (24px stroke SVG shapes, like icons.js),
 //     categories() -> [{ id, name, group?, detail?, icon? }],
-//     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, e.g. box art) }],
+//     list(categoryId) -> [{ id, title, size?, detail?, art? (https image URL, or a list tried in order), label?, regions?, tags? }],
 //     resolve([{ id, title, size }]) -> [{ title, magnet, infoHash, selectedFiles?, size? }] }
 // Modules are reloaded when their file changes, so a plugin keeps its caches between calls.
 // Plugins listed in `disabled` (by file name without .js) are skipped; broken ones come back with an error only.
@@ -277,6 +277,8 @@ function loadPlugins(dir, disabled = []) {
         id,
         file,
         name: p.name || id,
+        description: typeof p.description === 'string' ? p.description : '',
+        version: typeof p.version === 'string' ? p.version : '',
         search: typeof p.search === 'function' ? p.search : null,
         source: p.source && typeof p.source.list === 'function' && typeof p.source.resolve === 'function' ? p.source : null,
       });

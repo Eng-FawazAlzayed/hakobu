@@ -339,16 +339,23 @@ function registerIpc() {
   const pluginList = () => {
     const off = offPlugins();
     const on = new Map(loadPlugins(pluginDir()).map(p => [p.id, p]));
-    return [...on.values()].map(p => ({ id: p.id, name: p.source?.title || p.name, search: !!p.search, source: !!p.source, error: p.error || null, enabled: !off.includes(p.id) }));
+    return [...on.values()].map(p => ({
+      id: p.id, name: p.source?.title || p.name, description: p.description || '', version: p.version || '',
+      search: !!p.search, source: !!p.source, error: p.error || null, enabled: !off.includes(p.id),
+    }));
+  };
+  // Installing copies the file into the plugins folder (replacing an older copy with the same name).
+  const installPlugins = files => {
+    fs.mkdirSync(pluginDir(), { recursive: true });
+    for (const f of files.filter(f => /\.js$/i.test(f) && fs.existsSync(f))) fs.copyFileSync(f, path.join(pluginDir(), path.basename(f)));
+    return pluginList();
   };
   ipcMain.handle('plugins', pluginList);
   ipcMain.handle('pluginAdd', async () => {
-    const r = await dialog.showOpenDialog(win, { title: 'Add a Hakobu plugin', filters: [{ name: 'Hakobu plugin', extensions: ['js'] }], properties: ['openFile', 'multiSelections'] });
-    if (r.canceled) return pluginList();
-    fs.mkdirSync(pluginDir(), { recursive: true });
-    for (const f of r.filePaths) fs.copyFileSync(f, path.join(pluginDir(), path.basename(f)));
-    return pluginList();
+    const r = await dialog.showOpenDialog(win, { title: 'Install a Hakobu plugin', filters: [{ name: 'Hakobu plugin', extensions: ['js'] }], properties: ['openFile', 'multiSelections'] });
+    return r.canceled ? pluginList() : installPlugins(r.filePaths);
   });
+  ipcMain.handle('pluginInstall', (_e, files) => installPlugins(Array.isArray(files) ? files : []));
   // Removing sends the file to the Recycle Bin, so it can be restored.
   ipcMain.handle('pluginRemove', async (_e, id) => {
     const p = loadPlugins(pluginDir()).find(x => x.id === id);

@@ -182,8 +182,13 @@
         <span class="check" id="srcAll" title="Select all shown"><svg data-icon="check"></svg></span>
         <span class="muted" id="srcSel"></span>
         <span class="grow"></span>
+        <div class="seg hidden" id="srcLayout" title="Covers or list">
+          <button type="button" data-layout="grid"><svg data-icon="image"></svg></button>
+          <button type="button" data-layout="list"><svg data-icon="layers"></svg></button>
+        </div>
         <button class="btn primary" id="srcStart" disabled><svg data-icon="download"></svg>Start</button>
       </div>
+      <div class="src-chips hidden" id="srcRegions"></div>
       <div class="list-wrap">
         <div class="src-grid" id="srcGrid"></div>
         <div class="results" id="srcRows"></div>
@@ -341,11 +346,11 @@
           <div class="hrow"><input id="provUrl" placeholder="http://localhost:9117/api/v2.0/indexers/all/results/torznab" /><input id="provKey" placeholder="API key" style="max-width:140px" /><button type="button" class="btn ghost sq" id="provAdd"><svg data-icon="plus"></svg></button></div>
         </div>
         <div class="card">
-          <h3><svg data-icon="layers"></svg>Plugins</h3>
-          <p class="hint">Plugins add search results or a source under Source in the sidebar. They're .js files that run with Hakobu's own rights, so only add ones you trust. Removing a plugin sends it to the Recycle Bin.</p>
+          <h3><svg data-icon="layers"></svg>Plugin manager</h3>
+          <p class="hint">Plugins add search results or a source under Source in the sidebar. Install one with the button or by dropping its .js file onto the window; switch it off to hide it, or remove it (it goes to the Recycle Bin). Plugins run with Hakobu's own rights, so only install ones you trust.</p>
           <div class="mini-list" id="plugList"></div>
           <div class="hrow">
-            <button type="button" class="btn ghost" id="plugAdd"><svg data-icon="plus"></svg>Add plugin…</button>
+            <button type="button" class="btn ghost" id="plugAdd"><svg data-icon="plus"></svg>Install plugin…</button>
             <button type="button" class="btn ghost" id="plugDir"><svg data-icon="folder"></svg>Open plugins folder</button>
             <button type="button" class="btn ghost" id="plugReload"><svg data-icon="refresh"></svg>Reload</button>
           </div>

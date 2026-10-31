@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   state: () => ipcRenderer.invoke('state'),
@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   sources: () => ipcRenderer.invoke('sources'),
   plugins: () => ipcRenderer.invoke('plugins'),
   pluginAdd: () => ipcRenderer.invoke('pluginAdd'),
+  pluginInstall: files => ipcRenderer.invoke('pluginInstall', files.map(f => webUtils.getPathForFile(f))),
   pluginRemove: id => ipcRenderer.invoke('pluginRemove', id),
   pluginToggle: (id, enabled) => ipcRenderer.invoke('pluginToggle', id, enabled),
   openPluginsDir: () => ipcRenderer.invoke('openPluginsDir'),

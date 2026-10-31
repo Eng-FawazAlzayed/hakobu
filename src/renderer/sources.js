@@ -3,7 +3,11 @@
 // (e.g. a ROM archive: platform tiles -> file list -> tick files -> Start).
 
 const SHOW_MAX = 400; // rows drawn at once; the filter narrows the rest
-const srcState = { id: null, title: '', cats: [], cat: null, list: [], picked: new Set(), token: 0 };
+const srcState = { id: null, title: '', cats: [], cat: null, list: [], picked: new Set(), token: 0, region: 'all' };
+let srcLayout = 'grid'; // covers (eShop-style) when the plugin gives art, else always a list
+try {
+  srcLayout = localStorage.getItem('srcLayout') || 'grid';
+} catch {}
 const srcLists = new Map(); // `${source}|${category}` -> rows, kept for the session
 let srcCatalog = [];
 
@@ -63,6 +67,7 @@ function renderSrcGrid() {
   const cats = srcState.cats.filter(c => !q || `${c.name} ${c.group || ''}`.toLowerCase().includes(q));
   $('#srcRows').innerHTML = '';
   $('#srcTools').classList.add('hidden');
+  $('#srcRegions').classList.add('hidden');
   $('#srcBack').classList.add('hidden');
   $('#srcFilter').placeholder = 'Filter platforms';
   $('#srcInfo').textContent = `${srcState.cats.length} platforms`;
@@ -85,6 +90,7 @@ async function openSrcCategory(catId) {
   srcState.cat = cat;
   srcState.picked.clear();
   srcState.list = [];
+  srcState.region = 'all';
   const token = ++srcState.token;
   $('#srcFilter').value = '';
   $('#srcFilter').placeholder = `Filter ${cat.name}`;
@@ -95,6 +101,7 @@ async function openSrcCategory(catId) {
   $('#viewTitle').textContent = `${srcState.title} · ${cat.name}`;
   $('#srcInfo').textContent = '';
   $('#srcTools').classList.add('hidden');
+  $('#srcRegions').classList.add('hidden');
   const key = `${srcState.id}|${catId}`;
   try {
     if (!srcLists.has(key)) {
@@ -112,25 +119,65 @@ async function openSrcCategory(catId) {
 function srcShown() {
   const q = srcFilterText();
   const words = q.split(/\s+/).filter(Boolean);
+  const region = srcState.region;
   return srcState.list.filter(r => {
+    if (region !== 'all' && !(region === 'other' ? !r.regions?.some(x => srcTopRegions.includes(x)) : r.regions?.includes(region))) return false;
     const t = r.title.toLowerCase();
     return words.every(w => t.includes(w));
   });
+}
+
+// Region chips: the most common regions in this list, the rest under "Other".
+let srcTopRegions = [];
+function renderSrcRegions() {
+  const counts = new Map();
+  for (const r of srcState.list) for (const x of r.regions || []) counts.set(x, (counts.get(x) || 0) + 1);
+  srcTopRegions = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 7).map(([x]) => x);
+  const other = srcState.list.filter(r => !r.regions?.some(x => srcTopRegions.includes(x))).length;
+  const chips = [['all', 'All', srcState.list.length], ...srcTopRegions.map(x => [x, x, counts.get(x)]), ...(other && srcTopRegions.length ? [['other', 'Other', other]] : [])];
+  $('#srcRegions').classList.toggle('hidden', !srcTopRegions.length);
+  $('#srcRegions').innerHTML = chips
+    .map(([id, label, n]) => `<button type="button" data-region="${esc(id)}" class="${srcState.region === id ? 'on' : ''}">${esc(label)}<b>${n.toLocaleString()}</b></button>`)
+    .join('');
+}
+
+// A row's art is one https URL or a list of them; on a load error the next one is tried.
+const artList = r => (Array.isArray(r.art) ? r.art : [r.art]).filter(u => /^https:\/\//.test(u || ''));
+const artImg = r => {
+  const [first, ...rest] = artList(r);
+  return first ? `<img loading="lazy" decoding="async" alt="" src="${esc(first)}" data-next="${esc(rest.join(' '))}" />` : '';
+};
+
+function srcCard(r, i, on) {
+  const regions = (r.regions || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
+  const art = artImg(r);
+  return `<div class="shop-card${on ? ' sel' : ''}" data-id="${esc(r.id)}" title="${esc(r.title)}" style="animation-delay:${Math.min(i, 24) * 14}ms">
+    <div class="shop-art cover">${art}${svgIcon(srcState.cat?.icon, 'image')}<span class="check${on ? ' on' : ''}">${icon('check')}</span></div>
+    <div class="shop-info"><strong>${esc(r.label || r.title)}</strong>
+      <div class="shop-meta">${regions}${r.tags?.length ? `<span class="tagline">${esc(r.tags.join(' · '))}</span>` : ''}</div>
+      <small>${r.size ? bytes(r.size) : ''}</small></div></div>`;
 }
 
 function renderSrcRows() {
   const shown = srcShown();
   const drawn = shown.slice(0, SHOW_MAX);
   const hasArt = srcState.list.some(r => r.art);
+  const grid = hasArt && srcLayout === 'grid';
   $('#srcGrid').innerHTML = '';
   $('#srcTools').classList.toggle('hidden', !srcState.list.length);
+  $('#srcLayout').classList.toggle('hidden', !hasArt);
+  $$('#srcLayout button').forEach(b => b.classList.toggle('on', b.dataset.layout === (grid ? 'grid' : 'list')));
+  $('#srcRows').classList.toggle('shop-grid', grid);
+  $('#srcRows').classList.toggle('results', !grid);
+  renderSrcRegions();
   $('#srcInfo').textContent = shown.length > SHOW_MAX
     ? `Showing ${SHOW_MAX} of ${shown.length.toLocaleString()}, type to narrow`
     : `${shown.length.toLocaleString()}${shown.length !== srcState.list.length ? ` of ${srcState.list.length.toLocaleString()}` : ''} files`;
   $('#srcRows').innerHTML = drawn
     .map((r, i) => {
       const on = srcState.picked.has(r.id);
-      const art = /^https:\/\//.test(r.art || '') ? `<img loading="lazy" decoding="async" alt="" src="${esc(r.art)}" />` : '';
+      if (grid) return srcCard(r, i, on);
+      const art = artImg(r);
       return `<div class="row result src-row${on ? ' sel' : ''}${hasArt ? ' has-art' : ''}" data-id="${esc(r.id)}" style="animation-delay:${Math.min(i, 15) * 18}ms">
         <span class="check${on ? ' on' : ''}">${icon('check')}</span>${hasArt ? `<span class="cover">${art}${icon('image')}</span>` : ''}
         <div class="body"><div class="title"><span class="name" title="${esc(r.title)}">${esc(r.title)}</span></div>
@@ -209,7 +256,7 @@ $('#srcGrid').addEventListener('click', e => {
   if (t) openSrcCategory(t.dataset.cat);
 });
 $('#srcRows').addEventListener('click', e => {
-  const row = e.target.closest('.src-row');
+  const row = e.target.closest('.src-row, .shop-card');
   if (!row) return;
   const id = row.dataset.id;
   const on = !srcState.picked.has(id);
@@ -220,8 +267,34 @@ $('#srcRows').addEventListener('click', e => {
   renderSrcSel();
 });
 // No cover for that game: keep the placeholder icon.
-$('#srcRows').addEventListener('error', e => e.target.matches?.('.cover img') && e.target.remove(), true);
+$('#srcRows').addEventListener(
+  'error',
+  e => {
+    const img = e.target;
+    if (!img.matches?.('.cover img')) return;
+    const [next, ...rest] = (img.dataset.next || '').split(' ').filter(Boolean);
+    if (!next) return img.remove();
+    img.dataset.next = rest.join(' ');
+    img.src = next;
+  },
+  true
+);
 $('#srcRows').addEventListener('load', e => e.target.matches?.('.cover img') && e.target.parentNode.classList.add('loaded'), true);
+$('#srcRegions').addEventListener('click', e => {
+  const b = e.target.closest('[data-region]');
+  if (!b) return;
+  srcState.region = b.dataset.region;
+  renderSrcRows();
+});
+$('#srcLayout').addEventListener('click', e => {
+  const b = e.target.closest('[data-layout]');
+  if (!b) return;
+  srcLayout = b.dataset.layout;
+  try {
+    localStorage.setItem('srcLayout', srcLayout);
+  } catch {}
+  renderSrcRows();
+});
 $('#srcAll').addEventListener('click', () => {
   const shown = srcShown();
   const all = shown.every(r => srcState.picked.has(r.id));
@@ -250,14 +323,27 @@ function renderPlugins(list) {
     ? list
         .map(p => {
           const adds = [p.source && 'sidebar source', p.search && 'search'].filter(Boolean).join(' + ');
-          const sub = p.error ? `<span class="err ell" title="${esc(p.error)}">Doesn't load: ${esc(p.error)}</span>` : `<span class="muted">${esc(p.id)}.js${adds ? ` · adds ${adds}` : ''}</span>`;
-          return `<div class="mini plug"><label class="switch"><input type="checkbox" data-plug-on="${esc(p.id)}" ${p.enabled ? 'checked' : ''} ${p.error ? 'disabled' : ''} /><i></i></label>
+          const sub = p.error
+            ? `<span class="err ell" title="${esc(p.error)}">Doesn't load: ${esc(p.error)}</span>`
+            : `${p.description ? `<span class="plug-desc">${esc(p.description)}</span>` : ''}<span class="muted">${esc(p.id)}.js${p.version ? ` · v${esc(p.version)}` : ''}${adds ? ` · adds ${adds}` : ''}${p.enabled ? '' : ' · off'}</span>`;
+          return `<div class="mini plug"><label class="switch" title="${p.enabled ? 'Turn off' : 'Turn on'}"><input type="checkbox" data-plug-on="${esc(p.id)}" ${p.enabled ? 'checked' : ''} ${p.error ? 'disabled' : ''} /><i></i></label>
             <span class="grow plug-name"><strong class="ell">${esc(p.name)}</strong>${sub}</span>
             <button type="button" class="x" data-plug-del="${esc(p.id)}" title="Remove">${icon('trash')}</button></div>`;
         })
         .join('')
-    : '<div class="muted">No plugins yet. Add a .js plugin file, or drop it into the plugins folder.</div>';
+    : '<div class="muted">No plugins installed. Press Install plugin, or drop a .js plugin file onto this window.</div>';
 }
+
+// Install = copy into the plugins folder. Used by the button and by dropping .js files on the window.
+async function installedToast(before, list) {
+  await pluginsChanged(list);
+  const added = list.filter(p => !before.has(p.id));
+  if (added.length) toast('ok', `Installed ${added.map(p => p.name).join(', ')}`, added.some(p => p.error) ? "One of them doesn't load, see Settings → Plugins." : 'If it adds a source, it is under Source in the sidebar.');
+}
+window.installPluginFiles = async files => {
+  const before = new Set((await api.plugins()).map(p => p.id));
+  await installedToast(before, await api.pluginInstall(files));
+};
 
 // After any change: refresh the list and the sidebar; leave a source view whose plugin is gone.
 async function pluginsChanged(list) {
@@ -274,10 +360,7 @@ async function pluginsChanged(list) {
 
 $('#plugAdd').addEventListener('click', async () => {
   const before = new Set((await api.plugins()).map(p => p.id));
-  const list = await api.pluginAdd();
-  await pluginsChanged(list);
-  const added = list.filter(p => !before.has(p.id));
-  if (added.length) toast('ok', `Added ${added.map(p => p.name).join(', ')}`, added.some(p => p.error) ? "One of them doesn't load, see Settings → Plugins." : '');
+  await installedToast(before, await api.pluginAdd());
 });
 $('#plugDir').addEventListener('click', () => api.openPluginsDir());
 $('#plugReload').addEventListener('click', () => pluginsChanged());

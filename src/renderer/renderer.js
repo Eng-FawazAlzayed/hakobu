@@ -1043,7 +1043,11 @@ window.addEventListener('drop', e => {
   e.preventDefault();
   dragDepth = 0;
   $('#dropHint').classList.remove('show');
-  if (e.dataTransfer.files.length) addTorrentFiles([...e.dataTransfer.files]);
+  const files = [...e.dataTransfer.files];
+  const plugins = files.filter(f => /\.js$/i.test(f.name));
+  if (plugins.length) window.installPluginFiles?.(plugins);
+  if (files.length > plugins.length) addTorrentFiles(files.filter(f => !plugins.includes(f)));
+  else if (files.length) return;
   else api.parse(e.dataTransfer.getData('text')).then(addToGrabber);
 });
 
