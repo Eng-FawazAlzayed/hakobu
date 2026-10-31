@@ -43,6 +43,9 @@ data class AddRequest(
     val mediaQuality: String? = null,
     val thumbnail: String? = null,
     val uploader: String? = null,
+    /** Download only this section (seconds); both null = everything. */
+    val clipStart: Double? = null,
+    val clipEnd: Double? = null,
 )
 
 @Serializable
@@ -152,12 +155,13 @@ class DownloadManager(
             val via = if (r.via == Route.AUTO || r.link.kind == LinkKind.MEDIA) defaultRoute(r.link) else r.via
             val fmt = if (r.link.kind == LinkKind.MEDIA) r.mediaFormat ?: settings.ytFormat else null
             val quality = if (fmt == null) null else r.mediaQuality ?: if (fmt == "mp3") settings.ytAudioQuality else settings.ytVideoQuality
+            val clip = if (fmt != null) MediaFormats.clipLabel(r.clipStart, r.clipEnd) else null
             val item = DownloadItem(
                 id = UUID.randomUUID().toString(),
                 kind = r.link.kind,
                 via = via ?: Route.DIRECT,
                 source = r.link.source,
-                name = r.link.name,
+                name = if (clip != null) "${r.link.name} ($clip)" else r.link.name,
                 folder = r.folder,
                 packageName = r.packageName,
                 suggestedName = r.suggestedName,
@@ -168,6 +172,8 @@ class DownloadManager(
                 thumbnail = r.thumbnail,
                 uploader = r.uploader,
                 playlist = r.link.playlist,
+                clipStart = if (clip != null) r.clipStart else null,
+                clipEnd = if (clip != null) r.clipEnd else null,
             )
             val problem = if (via == null) blocker(r.link, Route.AUTO) ?: "Can't download this link." else blocker(r.link, via)
             if (problem != null) {

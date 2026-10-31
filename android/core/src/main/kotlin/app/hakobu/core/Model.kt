@@ -58,6 +58,9 @@ data class DownloadItem(
     val thumbnail: String? = null,
     val uploader: String? = null,
     val playlist: Boolean = false,
+    /** MP3 trimmed to a section: start and end in seconds (null = the whole track). */
+    val clipStart: Double? = null,
+    val clipEnd: Double? = null,
     var fileCount: Int = 0,
 ) {
     val progress: Double

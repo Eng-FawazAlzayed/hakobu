@@ -89,6 +89,9 @@ class MediaState {
     var format by mutableStateOf<String?>(null)
     var quality by mutableStateOf<String?>(null)
     var attempt by mutableIntStateOf(0)
+    // MP3 trimming: off = whole track; clip = chosen part in seconds (null = all of it).
+    var trim by mutableStateOf(false)
+    var clip by mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
 
     fun reset() {
         url = ""
@@ -96,6 +99,8 @@ class MediaState {
         infoFor = null
         error = null
         loading = false
+        trim = false
+        clip = null
     }
 }
 
@@ -129,6 +134,8 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
         state.info = null
         try {
             state.info = hakobu.manager.mediaInfo(l.source, l.playlist)
+            state.trim = false
+            state.clip = null
             state.infoFor = l.source
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -200,6 +207,9 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
                 }
             }
             else -> PreviewCard(
+                hakobu = hakobu,
+                url = link.source,
+                state = state,
                 info = state.info,
                 loading = state.loading,
                 error = state.error,
@@ -214,6 +224,7 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
                 onDownload = {
                     val l = link ?: return@PreviewCard
                     val info = state.info
+                    val clip = state.clip?.takeIf { state.trim && format == "mp3" && info?.isPlaylist != true }
                     scope.launch {
                         hakobu.manager.add(
                             listOf(
@@ -223,6 +234,8 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
                                     mediaQuality = quality,
                                     thumbnail = info?.thumbnail,
                                     uploader = info?.uploader,
+                                    clipStart = clip?.start?.toDouble(),
+                                    clipEnd = clip?.endInclusive?.toDouble(),
                                 )
                             )
                         )
@@ -268,6 +281,9 @@ private fun Hint(text: String) = Text(text, style = MaterialTheme.typography.bod
 
 @Composable
 private fun PreviewCard(
+    hakobu: Hakobu,
+    url: String,
+    state: MediaState,
     info: MediaInfo?,
     loading: Boolean,
     error: String?,
@@ -360,6 +376,9 @@ private fun PreviewCard(
                     }
                 }
 
+                val dur = info?.durationSec
+                if (format == "mp3" && info != null && !info.isPlaylist && dur != null && dur >= 2) TrimCard(hakobu, url, dur, state)
+
                 Button(
                     onClick = onDownload,
                     enabled = !loading,
@@ -371,6 +390,7 @@ private fun PreviewCard(
                     Text(
                         when {
                             info?.isPlaylist == true -> "Download playlist"
+                            format == "mp3" && state.trim -> "Download this part"
                             format == "mp3" -> "Download audio"
                             else -> "Download video"
                         },
@@ -410,15 +430,16 @@ private fun RecentRow(item: DownloadItem) {
 fun mediaStatus(item: DownloadItem): String {
     val kind = (item.mediaFormat ?: "mp4").uppercase()
     val q = item.mediaQuality?.let { if (item.mediaFormat == "mp3") "$it kbps" else MediaFormats.videoLabel(it) }
+    val clip = MediaFormats.clipLabel(item.clipStart, item.clipEnd)
     return when (item.status) {
-        Status.QUEUED -> "$kind · Waiting"
+        Status.QUEUED -> listOfNotNull(kind, clip, "Waiting").joinToString(" · ")
         Status.ACTIVE -> listOfNotNull(
             kind,
             item.remoteState ?: "${(item.progress * 100).toInt()}%",
             if (item.speed > 0) formatSpeed(item.speed) else null,
         ).joinToString(" · ")
         Status.PAUSED -> "$kind · Paused · ${(item.progress * 100).toInt()}%"
-        Status.COMPLETED -> listOfNotNull(kind, q, item.size?.let { formatBytes(it) }, if (item.fileCount > 1) "${item.fileCount} files" else null).joinToString(" · ")
+        Status.COMPLETED -> listOfNotNull(kind, q, clip, item.size?.let { formatBytes(it) }, if (item.fileCount > 1) "${item.fileCount} files" else null).joinToString(" · ")
         Status.FAILED -> item.error ?: "Failed"
         else -> kind
     }

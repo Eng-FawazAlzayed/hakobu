@@ -46,6 +46,24 @@ object MediaFormats {
         listOf("-f", "bv*$h[ext=mp4]+ba[ext=m4a]/bv*$h+ba/b$h/b", "--merge-output-format", "mp4")
     }
 
+    /** 75.5 -> "1:15", 3725 -> "1:02:05". */
+    fun clock(sec: Double): String {
+        val t = sec.coerceAtLeast(0.0).toLong()
+        val h = t / 3600
+        return if (h > 0) "%d:%02d:%02d".format(h, t % 3600 / 60, t % 60) else "%d:%02d".format(t / 60, t % 60)
+    }
+
+    /** "0:30–0:45" for a valid section, else null (whole track). */
+    fun clipLabel(start: Double?, end: Double?): String? =
+        if (start == null || end == null || start < 0 || end <= start) null else "${clock(start)}–${clock(end)}"
+
+    /** yt-dlp options that cut the download to [start]..[end] seconds; empty for the whole track. */
+    fun sectionArgs(start: Double?, end: Double?): List<String> {
+        if (clipLabel(start, end) == null) return emptyList()
+        fun s(v: Double) = "%.3f".format(java.util.Locale.ROOT, v).trimEnd('0').trimEnd('.')
+        return listOf("--download-sections", "*${s(start!!)}-${s(end!!)}", "--force-keyframes-at-cuts")
+    }
+
     private val PP_LABEL = mapOf(
         "ExtractAudio" to "Converting to MP3",
         "Merger" to "Merging audio & video",

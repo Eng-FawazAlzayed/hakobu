@@ -111,6 +111,30 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
         )
     }
 
+    /** A direct audio stream for previewing [url], with the headers the site wants. */
+    suspend fun audioStream(url: String): Pair<String, Map<String, String>> {
+        ensureReady()
+        val req = YoutubeDLRequest(url)
+            .addOption("-j")
+            .addOption("-f", "bestaudio/best")
+            .addOption("--no-playlist")
+            .addOption("--no-warnings")
+            .addOption("--socket-timeout", "20")
+            .apply { if (url in useSyndication) addOption("--extractor-args", SYNDICATION) }
+        val out = runInterruptible(Dispatchers.IO) { YoutubeDL.execute(req, null, false, null).out }
+        val o = json.parseToJsonElement(out.lines().first { it.startsWith("{") }) as JsonObject
+        val stream = (o["url"] as? JsonPrimitive)?.content ?: throw IllegalStateException("No audio stream for this link")
+        val headers = (o["http_headers"] as? JsonObject)?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }?.toMap().orEmpty()
+        return stream to headers
+    }
+
+    private fun outputTemplate(item: DownloadItem): String {
+        if (item.playlist) return "%(playlist_index)03d - %(title).150B.%(ext)s"
+        // "∶" looks like a colon but is allowed in file names.
+        val clip = MediaFormats.clipLabel(item.clipStart, item.clipEnd)?.replace(":", "∶")?.replace("%", "%%")
+        return if (clip != null) "%(title).160B ($clip).%(ext)s" else "%(title).180B.%(ext)s"
+    }
+
     override suspend fun download(item: DownloadItem, onProgress: (MediaProgress) -> Unit): List<MediaFile> {
         ensureReady()
         // Work in a private folder per item, so a paused download resumes from yt-dlp's .part files.
@@ -123,13 +147,13 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
             .addOption("--fragment-retries", "5")
             .addOption("-N", "4")
             .addOption("-P", dir.absolutePath)
-            .addOption("-o", if (item.playlist) "%(playlist_index)03d - %(title).150B.%(ext)s" else "%(title).180B.%(ext)s")
+            .addOption("-o", outputTemplate(item))
             .addOption("--embed-metadata")
             .addOption("--embed-thumbnail")
             .addOption("--convert-thumbnails", "jpg")
             .addOption(if (item.playlist) "--yes-playlist" else "--no-playlist")
             .apply { if (item.source in useSyndication) addOption("--extractor-args", SYNDICATION) }
-        val fmtArgs = MediaFormats.args(item.mediaFormat ?: "mp4", item.mediaQuality ?: "1080")
+        val fmtArgs = MediaFormats.args(item.mediaFormat ?: "mp4", item.mediaQuality ?: "1080") + MediaFormats.sectionArgs(item.clipStart, item.clipEnd)
         var i = 0
         while (i < fmtArgs.size) {
             val next = fmtArgs.getOrNull(i + 1)

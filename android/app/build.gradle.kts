@@ -12,8 +12,8 @@ android {
         applicationId = "app.hakobu.android"
         minSdk = 29 // Android 10: MediaStore Downloads, so files land in Download/Hakobu without storage permissions
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.3.0"
         // yt-dlp ships Python and ffmpeg per CPU type; phones from the last decade are arm64 or armv7.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -62,6 +62,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-datasource:1.8.0")
+    implementation("androidx.media3:media3-common:1.8.0")
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
     implementation("androidx.core:core-ktx:1.16.0")

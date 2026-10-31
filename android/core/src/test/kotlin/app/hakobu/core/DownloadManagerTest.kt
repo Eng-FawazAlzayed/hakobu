@@ -221,6 +221,13 @@ class DownloadManagerTest {
         m.add(listOf(AddRequest(yt, mediaFormat = "mp3", mediaQuality = "320")))
         m.waitFor("failure") { it.any { i -> i.status == Status.FAILED } }
         assertEquals("This video is private.", m.itemsFlow.value.first { it.status == Status.FAILED }.error)
+        val clip = m.add(listOf(AddRequest(yt.copy(name = "Song"), mediaFormat = "mp3", clipStart = 30.0, clipEnd = 45.0)))[0]
+        assertEquals("Song (0:30–0:45)", clip.name)
+        assertEquals(30.0, clip.clipStart)
+        assertEquals(45.0, clip.clipEnd)
+        val bad = m.add(listOf(AddRequest(yt.copy(name = "Song"), mediaFormat = "mp3", clipStart = 45.0, clipEnd = 30.0)))[0]
+        assertEquals("Song", bad.name)
+        assertEquals(null, bad.clipStart)
         m.close()
     }
 
