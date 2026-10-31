@@ -337,6 +337,12 @@ class Manager extends EventEmitter {
         }
         if (it.fallbackFrom) e.message = `${e.message} (${this.providerName(it.fallbackFrom)} failed first: ${it.fallbackReason})`;
         this.fail(it, e);
+        // A file host's page (wait timer, captcha, "click to download"): a person has to do that part in the browser.
+        if (e instanceof PageError && /^https?:/i.test(it.source)) {
+          it.needsBrowser = true;
+          it.pageUrl = it.pageUrl || it.source;
+          this.emit('needsBrowser', it);
+        }
       })
       .finally(() => {
         if (this.tasks.get(it.id) === task) this.tasks.delete(it.id);
@@ -550,9 +556,51 @@ class Manager extends EventEmitter {
     this.emitUpdate();
   }
 
+  // ---------- browser hand-off (JDownloader's "open in browser" for hosts with waits or captchas) ----------
+  // The page opens in the user's browser; they wait / solve the captcha and click download there; the Hakobu
+  // extension catches that download and browserHandoff() restarts this same item with the real file URL.
+  browserOpened(id) {
+    const it = this.items.get(id);
+    if (!it?.needsBrowser) return null;
+    it.status = 'browser';
+    it.error = null;
+    it.browserOpenedAt = Date.now();
+    this.dirty = true;
+    this.emitUpdate();
+    return it.pageUrl;
+  }
+
+  // The waiting item a browser download belongs to: same page first, else the newest one opened on that host.
+  matchBrowserWait(referrer) {
+    const host = u => {
+      try {
+        return new URL(u).hostname.replace(/^www\./, '');
+      } catch {
+        return '';
+      }
+    };
+    const page = u => String(u || '').replace(/#.*$/, '').replace(/\/+$/, '');
+    const h = host(referrer);
+    if (!h) return null;
+    const waiting = [...this.items.values()].filter(i => i.needsBrowser && i.status === 'browser' && host(i.pageUrl) === h);
+    return waiting.find(i => page(i.pageUrl) === page(referrer)) || waiting.sort((a, b) => b.browserOpenedAt - a.browserOpenedAt)[0] || null;
+  }
+
+  browserHandoff(id, entry) {
+    const it = this.items.get(id);
+    if (!it) return;
+    Object.assign(it, { source: entry.source, headers: entry.headers || null, needsBrowser: false, status: 'queued', error: null, downloaded: 0, progress: 0, size: null });
+    if (entry.suggestedName) it.suggestedName = entry.suggestedName;
+    delete it.segments;
+    delete it.resumable;
+    this.dirty = true;
+    this.schedule();
+    this.emitUpdate();
+  }
+
   resume(id) {
     const it = this.items.get(id);
-    if (!it || !['paused', 'error', 'retrying'].includes(it.status)) return;
+    if (!it || !['paused', 'error', 'retrying', 'browser'].includes(it.status)) return;
     it.status = 'queued';
     it.error = null;
     this.dirty = true;

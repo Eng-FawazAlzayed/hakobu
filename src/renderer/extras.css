@@ -235,3 +235,7 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 .sd-dl select { height: 32px; }
 .sd-dl .hrow { margin-top: 6px; align-items: center; }
 .sd-dl .hrow .muted { font-size: 12px; }
+
+/* "Needs browser": the globe button stays visible and stands out */
+.row.needs-browser .quick { width: 138px; opacity: 1; transform: none; }
+.row.needs-browser .quick [data-q="browser"] { color: var(--accent); background: var(--accent-soft); }

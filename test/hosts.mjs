@@ -178,6 +178,36 @@ try {
     await m.shutdown();
     ok('debrid fallback: link → direct, torrent → P2P, dead debrid link → original, combined error, can be switched off');
   }
+  // host page with a wait/captcha → "Needs browser" → opened → the browser's download finishes the same item
+  {
+    const m = new Manager({ statePath: null, settings: { downloadDir: path.join(tmp, 'br') }, hosters: registry });
+    m.torrents.init = async () => {};
+    m.torrents.applyLimits = () => {};
+    await m.init();
+    const until = async (fn, what) => {
+      for (let i = 0; i < 200 && !fn(); i++) await new Promise(r => setTimeout(r, 100));
+      assert.ok(fn(), 'timed out: ' + what);
+    };
+    const asked = [];
+    m.on('needsBrowser', it => asked.push(it.id));
+    const [p] = m.add([{ kind: 'http', source: `${base}/landing?file=42`, via: 'direct', name: 'game.rar', package: 'Game' }]);
+    await until(() => p.status === 'error', 'page error');
+    assert.ok(p.needsBrowser, 'flagged as needing the browser');
+    assert.deepEqual(asked, [p.id]);
+    assert.equal(m.matchBrowserWait(`${base}/landing?file=42`), null, 'nothing is waiting until the page is opened');
+    assert.equal(m.browserOpened(p.id), `${base}/landing?file=42`);
+    assert.equal(p.status, 'browser');
+    assert.equal(m.matchBrowserWait('https://other.example/x'), null, 'other hosts are not matched');
+    assert.equal(m.matchBrowserWait(`${base}/landing?file=42`).id, p.id);
+    m.browserHandoff(p.id, { kind: 'http', source: `${base}/files/real.bin?from=browser`, headers: { Cookie: 'a=1' }, suggestedName: 'game.rar' });
+    await until(() => p.status === 'completed' || p.status === 'error', 'handoff download');
+    assert.equal(p.status, 'completed', p.error);
+    assert.equal(p.package, 'Game', 'same package');
+    assert.ok(!p.needsBrowser);
+    assert.equal(sha(fs.readFileSync(path.join(tmp, 'br', 'game.rar'))), sha(payload));
+    await m.shutdown();
+    ok('host page → "Needs browser" → opened → the browser download continues in the same item and folder');
+  }
   console.log('\nAll file-host tests passed.');
 } finally {
   server.close();

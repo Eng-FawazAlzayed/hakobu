@@ -2,6 +2,11 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.5] - 2026-11-01
+
+### Added
+- Browser hand-off for file hosts with wait timers or captchas (like JDownloader): such downloads show Needs browser with a globe button that opens the page in your browser. You do the wait or captcha and click the site's download button; the Hakobu extension (0.2.0) catches that download and it continues in the same entry, folder and package. An optional setting opens these pages automatically. Hakobu never solves captchas itself.
+
 ## [0.3.4] - 2026-11-01
 
 ### Added

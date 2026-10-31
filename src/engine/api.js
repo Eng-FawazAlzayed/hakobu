@@ -47,9 +47,11 @@ const timingSafeEq = (a, b) => {
 
 class LocalApi {
   // onLinks(entries, meta) is called with parsed LinkGrabber entries.
-  constructor({ onLinks, getState, version = '0.1.0' }) {
+  // expecting(referrer) says whether a download in "Needs browser" is waiting for a browser download from that page.
+  constructor({ onLinks, getState, expecting = () => false, version = '0.1.0' }) {
     this.onLinks = onLinks;
     this.getState = getState;
+    this.expecting = expecting;
     this.version = version;
     this.servers = {};
     this.status = { api: 'off', cnl: 'off' };
@@ -86,6 +88,8 @@ class LocalApi {
     if (!timingSafeEq(req.headers['x-hakobu-token'], this.token)) return send(res, 401, { error: 'Bad or missing token' });
     if (req.method === 'GET' && url.pathname === '/api/ping') return send(res, 200, { app: 'Hakobu', version: this.version });
     if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, this.getState?.() || {});
+    // The extension asks before taking over a browser download it would otherwise leave alone.
+    if (req.method === 'GET' && url.pathname === '/api/expecting') return send(res, 200, { expecting: !!this.expecting(url.searchParams.get('referrer') || '') });
     if (req.method === 'POST' && url.pathname === '/api/add') {
       let body;
       try {
@@ -104,7 +108,7 @@ class LocalApi {
         if (typeof body.filename === 'string' && entries.length === 1) e.suggestedName = body.filename.slice(0, 200);
         if (typeof body.package === 'string') e.package = body.package.slice(0, 200);
       }
-      if (entries.length) this.onLinks(entries, { source: 'extension', page: body.page });
+      if (entries.length) this.onLinks(entries, { source: 'extension', page: body.page, capture: !!body.capture, referrer: headers.Referer || '' });
       return send(res, 200, { added: entries.length });
     }
     send(res, 404, { error: 'Not found' });

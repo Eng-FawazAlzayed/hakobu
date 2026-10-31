@@ -15,7 +15,7 @@ const ok = msg => console.log('  ✓', msg);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-api-'));
 
 const got = [];
-const localApi = new LocalApi({ onLinks: (entries, meta) => got.push({ entries, meta }), version: '9.9.9' });
+const localApi = new LocalApi({ onLinks: (entries, meta) => got.push({ entries, meta }), expecting: ref => ref === 'https://host.example/f/1', version: '9.9.9' });
 const PORT = 46000 + Math.floor(Math.random() * 1000);
 const status = await localApi.start({ apiPort: PORT, token: 'tok123', cnl: true });
 const base = `http://127.0.0.1:${PORT}`;
@@ -41,6 +41,17 @@ try {
     assert.deepEqual(direct.headers, { Cookie: 'sid=42', Referer: 'https://files.example.com/page' });
     assert.equal(magnet.headers, undefined, 'cookies never attach to magnets');
     ok('extension API: token required, ping, links + magnets, cookies/referrer passed for direct links only');
+
+    // "Needs browser": the extension asks first, and a captured download carries capture + referrer to the app
+    const H = { 'X-Hakobu-Token': 'tok123' };
+    assert.deepEqual(await (await fetch(`${base}/api/expecting?referrer=${encodeURIComponent('https://host.example/f/1')}`, { headers: H })).json(), { expecting: true });
+    assert.deepEqual(await (await fetch(`${base}/api/expecting?referrer=${encodeURIComponent('https://else.example/')}`, { headers: H })).json(), { expecting: false });
+    assert.equal((await fetch(`${base}/api/expecting?referrer=x`)).status, 401, 'token required');
+    await fetch(`${base}/api/add`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ links: ['https://cdn.host.example/file.rar'], referrer: 'https://host.example/f/1', capture: true }) });
+    const cap = got.pop();
+    assert.equal(cap.meta.capture, true);
+    assert.equal(cap.meta.referrer, 'https://host.example/f/1');
+    ok('browser hand-off API: "expecting" check needs the token, captured downloads carry capture + referrer');
   }
 
   // ---- Click'n'Load ----

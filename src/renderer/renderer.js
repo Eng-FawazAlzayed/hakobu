@@ -58,8 +58,9 @@ function view(it) {
     seeding: ['seeding', 'Seeding', 'seeding'],
     completed: ['completed', 'Completed', 'completed'],
     paused: ['paused', 'Paused', 'paused'],
-    error: ['error', 'Error', 'error'],
+    error: ['error', it.needsBrowser ? 'Needs browser' : 'Error', 'error'],
     retrying: ['downloading', 'Retrying soon', 'paused'],
+    browser: ['downloading', 'Waiting for the browser', 'resolving'],
   };
   const [group, label, cls] = map[it.status] || ['paused', it.status, 'paused'];
   return { size: it.size, downloaded: it.downloaded, speed: it.speed, progress: it.progress || 0, group, label, cls };
@@ -82,6 +83,8 @@ function matches(it, f = filter) {
 
 function metaLine(it, v) {
   const parts = [];
+  if (it.status === 'browser') return `<span>Finish the wait or captcha in your browser and click its download button. Hakobu takes the download from there.</span>`;
+  if (it.needsBrowser && it.status === 'error') return `<span class="err" title="${esc(it.error)}">This host wants a person: press the globe to open it in your browser.</span>`;
   if (it.status === 'error') return `<span class="err" title="${esc(it.error)}">${esc(it.error)}</span>`;
   if (v.size) parts.push(v.group === 'completed' || v.group === 'seeding' ? bytes(v.size) : `${bytes(v.downloaded)} of ${bytes(v.size)}`);
   else if (v.downloaded) parts.push(bytes(v.downloaded));
@@ -131,6 +134,7 @@ function createRow(it) {
       <span class="status"></span>
       <span class="pct"></span>
       <div class="quick">
+        <button data-q="browser" class="hidden" title="Open in browser (wait / captcha)">${icon('globe')}</button>
         <button data-q="toggle"></button>
         <button data-q="open" title="Show in folder">${icon('folder')}</button>
         <button data-q="remove" title="Remove">${icon('x')}</button>
@@ -156,6 +160,8 @@ function patchRow(el, it) {
   st.title = it.error || v.label;
   el.querySelector('.pct').textContent = v.group === 'completed' ? '' : pct.toFixed(pct < 10 ? 1 : 0) + '%';
   const canPause = ['active', 'queued', 'resolving', 'seeding', 'retrying'].includes(it.status);
+  el.querySelector('[data-q="browser"]').classList.toggle('hidden', !it.needsBrowser);
+  el.classList.toggle('needs-browser', !!it.needsBrowser);
   const toggle = el.querySelector('[data-q="toggle"]');
   const want = canPause ? 'pause' : 'play';
   if (toggle.dataset.icon !== want) {
@@ -315,6 +321,7 @@ function notifyTransitions() {
     if (before && before !== it.status) {
       if (it.status === 'completed' && before !== 'seeding') toast('ok', 'Download complete', it.name);
       else if (it.status === 'seeding' && before === 'active') toast('ok', 'Torrent finished · seeding', it.name);
+      else if (it.status === 'error' && it.needsBrowser) toast('info', 'Needs your browser', `${it.name}: the host wants a wait or a captcha. Press the globe on it.`);
       else if (it.status === 'error') toast('err', 'Download failed', it.error || it.name);
       else if (it.status === 'handed-off') toast('info', `${PROVIDER[it.via]} is ready`, `${it.childIds?.length || 0} file(s) now downloading`);
     }
@@ -492,6 +499,7 @@ $('#list').addEventListener('click', async e => {
     const it = items.find(i => i.id === id);
     if (q === 'toggle') api.action([id], ['active', 'queued', 'resolving', 'seeding'].includes(it.status) ? 'pause' : 'resume');
     if (q === 'open') api.action([id], 'open');
+    if (q === 'browser') api.openInBrowser([id]);
     if (q === 'remove') api.action([id], 'remove');
     return;
   }

@@ -363,6 +363,7 @@
           </label>
           <label class="field"><span>TorBox API key <em>torbox.app → Settings</em></span><span class="hrow"><input name="torboxKey" type="password" autocomplete="off" /><button type="button" class="btn ghost" data-test="torbox">Test</button></span></label>
           <label class="switch"><input type="checkbox" name="debridFallback" /><i></i>If debrid fails, retry without it (P2P for torrents, direct for links, up to 2 tries)</label>
+          <label class="switch"><input type="checkbox" name="autoOpenBrowser" /><i></i>When a file host needs a wait or a captcha, open its page in the browser right away (the Hakobu extension brings the download back)</label>
           <label class="field"><span>Real-Debrid token <em>real-debrid.com/apitoken</em></span><span class="hrow"><input name="realdebridToken" type="password" autocomplete="off" /><button type="button" class="btn ghost" data-test="realdebrid">Test</button></span></label>
           <p class="hint">Keys are encrypted with Windows DPAPI and only sent to the provider's own API.</p>
         </div>

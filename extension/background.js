@@ -72,20 +72,32 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   }
 });
 
-// Optional: take over browser downloads (cookies + referrer go along so logged-in downloads work).
+// Take over browser downloads (cookies + referrer go along so logged-in downloads work). Always for a page Hakobu
+// opened because a file host needed a wait or captcha ("Needs browser"); for everything else only when enabled.
 chrome.downloads.onCreated.addListener(async item => {
   const s = await settings();
-  if (!s.captureDownloads || !/^https?:/i.test(item.finalUrl || item.url)) return;
-  if (item.totalBytes > 0 && item.totalBytes < s.captureMinMB * 1024 * 1024) return;
   const url = item.finalUrl || item.url;
+  if (!/^https?:/i.test(url)) return;
+  let expected = false;
   try {
     await api('/api/ping');
+    if (item.referrer) expected = (await api(`/api/expecting?referrer=${encodeURIComponent(item.referrer)}`)).expecting;
   } catch {
-    return; // Hakobu not running: let the browser handle it
+    return; // Hakobu not running (or an older Hakobu): let the browser handle it
+  }
+  if (!expected) {
+    if (!s.captureDownloads) return;
+    if (item.totalBytes > 0 && item.totalBytes < s.captureMinMB * 1024 * 1024) return;
   }
   await chrome.downloads.cancel(item.id).catch(() => {});
   chrome.downloads.erase({ id: item.id }).catch(() => {});
   const cookies = await chrome.cookies.getAll({ url }).catch(() => []);
   const filename = item.filename ? item.filename.split(/[\\/]/).pop() : undefined;
-  send({ links: [url], referrer: item.referrer, cookie: cookies.map(c => `${c.name}=${c.value}`).join('; '), filename }, 'download').catch(() => {});
+  const payload = { links: [url], referrer: item.referrer, cookie: cookies.map(c => `${c.name}=${c.value}`).join('; '), filename, capture: true };
+  if (expected) {
+    api('/api/add', payload).then(
+      () => notify('Back to Hakobu', 'The download continues in Hakobu.'),
+      e => notify("Couldn't reach Hakobu", e.message)
+    );
+  } else send(payload, 'download').catch(() => {});
 });

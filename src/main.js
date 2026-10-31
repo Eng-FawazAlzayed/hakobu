@@ -134,6 +134,14 @@ function grabFromArgs(argv) {
   sendGrab(entries);
 }
 
+// "Needs browser": open the host's page in the default browser; the extension brings the real download back.
+function openInBrowser(id) {
+  const url = manager.browserOpened(id);
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  shell.openExternal(url);
+  return url;
+}
+
 // A double-clicked .hakobu-plugin file (a plugin's .js under its own extension): ask, then copy it into the plugins folder.
 async function installPluginFile(file) {
   if (!win) return app.whenReady().then(() => setTimeout(() => installPluginFile(file), 1500));
@@ -304,6 +312,7 @@ function registerIpc() {
     if (action === 'shutdown') return execFile('shutdown', ['/s', '/t', '0']);
   });
   ipcMain.handle('add', (_e, entries) => manager.add(entries).length);
+  ipcMain.handle('openInBrowser', (_e, ids) => ids.map(openInBrowser).filter(Boolean).length);
   ipcMain.handle('action', async (_e, ids, action) => {
     for (const id of ids) {
       if (action === 'pause') await manager.pause(id);
@@ -498,12 +507,27 @@ app.whenReady().then(async () => {
   localApi = new LocalApi({
     version: app.getVersion(),
     onLinks: (entries, meta) => {
+      // A browser download from a page a "Needs browser" item is waiting on finishes that item instead.
+      const waiting = meta.capture && entries.length === 1 && entries[0].kind === 'http' && manager.matchBrowserWait(meta.referrer);
+      if (waiting) {
+        manager.browserHandoff(waiting.id, entries[0]);
+        win?.webContents.send('toast', { kind: 'ok', title: 'Got it from the browser', text: waiting.name });
+        return;
+      }
       sendGrab(entries);
       if (meta.source === 'clicknload') win?.webContents.send('toast', { kind: 'info', title: "Click'n'Load", text: `${entries.length} link(s) from ${meta.page || 'a website'}` });
     },
     getState: () => ({ active: manager.snapshot().filter(i => i.status === 'active').length }),
+    expecting: referrer => !!manager.matchBrowserWait(referrer),
   });
   await startApi();
+  // Hosts with wait timers / captchas: optionally open the page in the browser right away (at most one every few seconds).
+  let lastAutoOpen = 0;
+  manager.on('needsBrowser', it => {
+    if (!manager.settings.autoOpenBrowser || Date.now() - lastAutoOpen < 4000) return;
+    lastAutoOpen = Date.now();
+    openInBrowser(it.id);
+  });
   // RSS rules add matching articles straight to the download list.
   feeds = new FeedService({
     file: userFile('rss.json'),
