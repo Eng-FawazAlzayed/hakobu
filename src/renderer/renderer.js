@@ -1044,7 +1044,7 @@ window.addEventListener('drop', e => {
   dragDepth = 0;
   $('#dropHint').classList.remove('show');
   const files = [...e.dataTransfer.files];
-  const plugins = files.filter(f => /\.js$/i.test(f.name));
+  const plugins = files.filter(f => /\.(js|hakobu-plugin)$/i.test(f.name));
   if (plugins.length) window.installPluginFiles?.(plugins);
   if (files.length > plugins.length) addTorrentFiles(files.filter(f => !plugins.includes(f)));
   else if (files.length) return;

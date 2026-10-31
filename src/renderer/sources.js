@@ -417,6 +417,7 @@ function renderPlugins(list) {
             : `${p.description ? `<span class="plug-desc">${esc(p.description)}</span>` : ''}<span class="muted">${esc(p.id)}.js${p.version ? ` · v${esc(p.version)}` : ''}${adds ? ` · adds ${adds}` : ''}${p.enabled ? '' : ' · off'}</span>`;
           return `<div class="mini plug"><label class="switch" title="${p.enabled ? 'Turn off' : 'Turn on'}"><input type="checkbox" data-plug-on="${esc(p.id)}" ${p.enabled ? 'checked' : ''} ${p.error ? 'disabled' : ''} /><i></i></label>
             <span class="grow plug-name"><strong class="ell">${esc(p.name)}</strong>${sub}</span>
+            ${p.error ? '' : `<button type="button" class="x" data-plug-share="${esc(p.id)}" title="Save as a .hakobu-plugin file to share">${icon('upload')}</button>`}
             <button type="button" class="x" data-plug-del="${esc(p.id)}" title="Remove">${icon('trash')}</button></div>`;
         })
         .join('')
@@ -458,10 +459,21 @@ $('#plugList').addEventListener('change', async e => {
   if (id !== undefined) await pluginsChanged(await api.pluginToggle(id, e.target.checked));
 });
 $('#plugList').addEventListener('click', async e => {
+  const share = e.target.closest('[data-plug-share]')?.dataset.plugShare;
+  if (share !== undefined) {
+    if (await api.pluginShare(share)) toast('ok', 'Plugin saved', 'Send the .hakobu-plugin file to anyone with Hakobu: they double-click it to install.');
+    return;
+  }
   const id = e.target.closest('[data-plug-del]')?.dataset.plugDel;
   if (id === undefined) return;
   if (!(await confirmModal('Remove plugin?', `${id}.js goes to the Recycle Bin. You can restore it from there or add it again later.`))) return;
   await pluginsChanged(await api.pluginRemove(id));
+});
+// A .hakobu-plugin file was opened (double-click) and installed by the main process.
+api.onPluginsChanged(async id => {
+  await pluginsChanged();
+  const p = (await api.plugins()).find(x => x.id === id);
+  if (p) toast(p.error ? 'err' : 'ok', p.error ? `${p.name} doesn't load` : `Installed ${p.name}`, p.error || 'If it adds a source, it is under Source in the sidebar.');
 });
 const prevViewShown = window.onViewShown;
 window.onViewShown = name => {

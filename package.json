@@ -1,7 +1,7 @@
 {
   "name": "hakobu",
   "productName": "Hakobu",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Hakobu (運ぶ, \"to carry\"): direct downloads, torrents, YouTube & media, with TorBox / Real-Debrid support",
   "main": "src/main.js",
   "type": "commonjs",
@@ -66,6 +66,12 @@
       {
         "ext": "torrent",
         "name": "Torrent file",
+        "role": "Viewer"
+      },
+      {
+        "ext": "hakobu-plugin",
+        "name": "Hakobu plugin",
+        "description": "Hakobu plugin (double-click to install)",
         "role": "Viewer"
       }
     ],

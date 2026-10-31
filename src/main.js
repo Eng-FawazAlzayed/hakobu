@@ -108,7 +108,8 @@ function saveSettings(settings) {
 function grabFromArgs(argv) {
   const entries = [];
   for (const arg of argv.slice(1)) {
-    if (/^magnet:/i.test(arg)) entries.push(...parseLinks(arg));
+    if (/\.hakobu-plugin$/i.test(arg) && fs.existsSync(arg)) installPluginFile(arg);
+    else if (/^magnet:/i.test(arg)) entries.push(...parseLinks(arg));
     else if (/\.torrent$/i.test(arg) && fs.existsSync(arg)) {
       entries.push({
         kind: 'torrent',
@@ -119,6 +120,29 @@ function grabFromArgs(argv) {
     }
   }
   sendGrab(entries);
+}
+
+// A double-clicked .hakobu-plugin file (a plugin's .js under its own extension): ask, then copy it into the plugins folder.
+async function installPluginFile(file) {
+  if (!win) return app.whenReady().then(() => setTimeout(() => installPluginFile(file), 1500));
+  if (win.webContents.isLoading()) return win.webContents.once('did-finish-load', () => installPluginFile(file));
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  const id = path.basename(file).replace(/\.hakobu-plugin$/i, '');
+  const exists = fs.existsSync(path.join(userFile('plugins'), id + '.js'));
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: [exists ? 'Update' : 'Install', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Install plugin',
+    message: `${exists ? 'Update' : 'Install'} the plugin "${id}"?`,
+    detail: "Plugins run with Hakobu's own rights, so only install ones from people you trust. You can switch it off or remove it any time in Settings → Plugin manager.",
+  });
+  if (response !== 0) return;
+  fs.mkdirSync(userFile('plugins'), { recursive: true });
+  fs.copyFileSync(file, path.join(userFile('plugins'), id + '.js'));
+  win.webContents.send('pluginsChanged', id);
 }
 
 function sendGrab(entries) {
@@ -361,15 +385,26 @@ function registerIpc() {
     }));
   };
   // Installing copies the file into the plugins folder (replacing an older copy with the same name).
+  // A .hakobu-plugin file is the same .js under its own extension, so it can be shared and double-clicked.
+  const PLUGIN_FILE = /\.(js|hakobu-plugin)$/i;
   const installPlugins = files => {
     fs.mkdirSync(pluginDir(), { recursive: true });
-    for (const f of files.filter(f => /\.js$/i.test(f) && fs.existsSync(f))) fs.copyFileSync(f, path.join(pluginDir(), path.basename(f)));
+    for (const f of files.filter(f => PLUGIN_FILE.test(f) && fs.existsSync(f))) fs.copyFileSync(f, path.join(pluginDir(), path.basename(f).replace(PLUGIN_FILE, '.js')));
     return pluginList();
   };
   ipcMain.handle('plugins', pluginList);
   ipcMain.handle('pluginAdd', async () => {
-    const r = await dialog.showOpenDialog(win, { title: 'Install a Hakobu plugin', filters: [{ name: 'Hakobu plugin', extensions: ['js'] }], properties: ['openFile', 'multiSelections'] });
+    const r = await dialog.showOpenDialog(win, { title: 'Install a Hakobu plugin', filters: [{ name: 'Hakobu plugin', extensions: ['hakobu-plugin', 'js'] }], properties: ['openFile', 'multiSelections'] });
     return r.canceled ? pluginList() : installPlugins(r.filePaths);
+  });
+  ipcMain.handle('pluginShare', async (_e, id) => {
+    const p = loadPlugins(pluginDir()).find(x => x.id === id);
+    if (!p) return false;
+    const r = await dialog.showSaveDialog(win, { title: 'Save plugin to share', defaultPath: path.join(app.getPath('desktop'), `${id}.hakobu-plugin`), filters: [{ name: 'Hakobu plugin', extensions: ['hakobu-plugin'] }] });
+    if (r.canceled || !r.filePath) return false;
+    fs.copyFileSync(p.file, r.filePath);
+    shell.showItemInFolder(r.filePath);
+    return true;
   });
   ipcMain.handle('pluginInstall', (_e, files) => installPlugins(Array.isArray(files) ? files : []));
   // Removing sends the file to the Recycle Bin, so it can be restored.

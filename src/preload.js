@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('api', {
   pluginAdd: () => ipcRenderer.invoke('pluginAdd'),
   pluginInstall: files => ipcRenderer.invoke('pluginInstall', files.map(f => webUtils.getPathForFile(f))),
   pluginRemove: id => ipcRenderer.invoke('pluginRemove', id),
+  pluginShare: id => ipcRenderer.invoke('pluginShare', id),
+  onPluginsChanged: cb => ipcRenderer.on('pluginsChanged', (_e, id) => cb(id)),
   pluginToggle: (id, enabled) => ipcRenderer.invoke('pluginToggle', id, enabled),
   openPluginsDir: () => ipcRenderer.invoke('openPluginsDir'),
   sourceCategories: id => ipcRenderer.invoke('sourceCategories', id),

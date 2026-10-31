@@ -2,6 +2,12 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.3.1] - 2026-10-31
+
+### Added
+- .hakobu-plugin files: double-click one (or drop it on the window) to install that plugin after a confirm prompt.
+- Plugin manager: a share button saves any installed plugin as a .hakobu-plugin file.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added
