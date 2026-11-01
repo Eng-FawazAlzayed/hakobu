@@ -45,6 +45,6 @@ class XAccount(context: Context) {
             return null
         }
         tempDir.mkdirs()
-        return File.createTempFile("x", ".txt", tempDir).apply { writeText(plain) }
+        return File.createTempFile("x-cookies", ".txt", tempDir).apply { writeText(plain) }
     }
 }
