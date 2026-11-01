@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { netFetch } = require('./net');
 const { hostOf } = require('./hosters');
-const { moduleFor } = require('./resolvers');
+const { moduleFor, accountFor } = require('./resolvers');
 const { UA, decodeHtml } = require('./hosts/common');
 
 const PROTECTORS = [
@@ -175,7 +175,7 @@ async function crawl(url, { headers = {}, signal, route = 0 } = {}) {
     return { package: `Paste ${hostOf(url)}`, links };
   }
   const mod = moduleFor(url);
-  if (mod?.isFolder?.(url)) return mod.crawl(url, { signal: sig, route });
+  if (mod?.isFolder?.(url)) return mod.crawl(url, { signal: sig, route, account: accountFor(mod) });
   return null;
 }
 

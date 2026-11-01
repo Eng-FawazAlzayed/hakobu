@@ -7,7 +7,7 @@ All notable changes to Hakobu are listed here. Versions follow [semantic version
 JDownloader-style handling of file hosts and their special cases.
 
 ### Added
-- Built-in host support without debrid: MEGA files and folders (decrypted while downloading), Pixeldrain files and lists, Gofile folders, MediaFire files and folders, Google Drive files and folders (including the "can't scan for viruses" page), and 1fichier free downloads with their waits.
+- Built-in host support without debrid: MEGA files and folders (decrypted while downloading), Pixeldrain files and lists, Gofile folders (with a premium token; otherwise they open in the browser), MediaFire files and folders, Google Drive files and folders (including the "can't scan for viruses" page), and 1fichier free downloads with their waits.
 - Link crawler: folder links, DLC containers (open, drop or double-click a .dlc; the extension sends .dlc downloads to Hakobu), paste sites and web server "Index of" listings turn into their files in LinkGrabber, with sub-folders kept. Link protectors such as filecrypt are marked "protected" with a button to open them in the browser.
 - Smart waits: HTTP 429/503 with Retry-After, MEGA's transfer quota, 1fichier's "wait 17 minutes", Google Drive's daily quota and a full disk put a download in "Waiting" with a countdown instead of failing. A host-wide wait holds the other downloads from that host too. Press play to try right away.
 - Automatic retries for connection problems after 1, 5 and 15 minutes (setting).

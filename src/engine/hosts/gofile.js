@@ -1,53 +1,25 @@
-// Gofile (gofile.io/d/CODE): every link is a folder. Hakobu makes a guest account (as the website does), lists the
-// folder and its sub-folders, and downloads each file with that account's cookie. A premium token can be set instead.
-const crypto = require('crypto');
-const { getJson, getText, hostIn, HostError, gone, UA } = require('./common');
+// Gofile (gofile.io/d/CODE): every link is a folder. Its API only lists folders for premium accounts, so Hakobu uses
+// your premium token (Settings → Host accounts) and downloads each file with its cookie. Without a token the folder
+// opens in the browser.
+const { getJson, hostIn, HostError, gone } = require('./common');
 
 const API = 'https://api.gofile.io';
-let guest = null; // { token, at }
-let wt = null; // website token, read from gofile's own script
 
-async function token(ctx) {
+function token(ctx) {
   if (ctx.account?.token) return ctx.account.token;
-  if (guest && Date.now() - guest.at < 6 * 3600 * 1000) return guest.token;
-  const { data } = await getJson(ctx, `${API}/accounts`, { method: 'POST' });
-  if (data?.status !== 'ok' || !data.data?.token) throw new Error('Gofile: could not create a guest account');
-  guest = { token: data.data.token, at: Date.now() };
-  return guest.token;
-}
-
-async function websiteToken(ctx, tok) {
-  if (!wt) {
-    for (const src of ['https://gofile.io/dist/js/config.js', 'https://gofile.io/dist/js/global.js']) {
-      try {
-        const { text } = await getText(ctx, src);
-        const m = /\bwt\s*[:=]\s*["']([\w-]+)["']/.exec(text) || /websiteToken\s*[:=]\s*["']([\w-]+)["']/.exec(text);
-        if (m) {
-          wt = m[1];
-          break;
-        }
-      } catch {}
-    }
-    wt = wt || '4fd6sg89d7s6';
-  }
-  // Newer site versions sign each request: sha256(UA::lang::token::4-hour slot::secret). Sent alongside the old ?wt=.
-  const slot = Math.floor(Date.now() / 1000 / 14400);
-  const signed = crypto.createHash('sha256').update(`${UA}::en-US::${tok}::${slot}::5d4f7g8sd45fsd`).digest('hex');
-  return { wt, signed };
+  throw new HostError('Gofile folders need a premium token: open it in your browser, or add your token in Settings → Host accounts', { browser: true });
 }
 
 const codeOf = url => /\/d\/([\w-]+)/.exec(String(url))?.[1] || null;
 
 async function contents(code, ctx) {
-  const tok = await token(ctx);
-  const { wt: w, signed } = await websiteToken(ctx, tok);
-  const { res, data } = await getJson(ctx, `${API}/contents/${code}?wt=${w}&cache=true&sortField=name&sortDirection=1`, {
-    headers: { Authorization: `Bearer ${tok}`, 'X-Website-Token': signed, 'X-BL': 'en-US' },
+  const tok = token(ctx);
+  const { res, data } = await getJson(ctx, `${API}/contents/${code}?cache=true&sortField=name&sortDirection=1`, {
+    headers: { Authorization: `Bearer ${tok}` },
   });
   if (data?.status === 'error-notFound' || res.status === 404) throw gone('Gofile');
   if (data?.status === 'error-passwordRequired') throw new HostError('Gofile: this folder has a password; open it in your browser', { browser: true });
-  // Also what guests get when Gofile's website check changes: the browser (or a premium token) still works.
-  if (data?.status === 'error-notPremium') throw new HostError('Gofile only lists folders for its website or premium accounts: open it in your browser, or add your premium token in Settings → Host accounts', { browser: true });
+  if (data?.status === 'error-notPremium') throw new HostError('Gofile says this token is not premium: open the folder in your browser', { browser: true });
   if (data?.status !== 'ok') throw new HostError(`Gofile refused the listing (${data?.status || 'HTTP ' + res.status})`, { browser: true });
   return { tok, folder: data.data };
 }
@@ -102,7 +74,7 @@ module.exports = {
   id: 'gofile',
   name: 'Gofile',
   test: hostIn('gofile.io'),
-  free: true,
+  free: false,
   isFolder: url => !!codeOf(url),
   account: { fields: [{ key: 'token', label: 'Account token', secret: true }], help: 'gofile.io → My profile → Account token' },
   resolve,

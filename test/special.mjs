@@ -378,6 +378,25 @@ const newManager = (settings = {}) => {
   assert.ok(isFolderLink('https://mega.nz/folder/AbCdEfGh#' + 'C'.repeat(22)));
   assert.ok(isFolderLink('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp'));
   assert.ok(isFolderLink('https://gofile.io/d/AbC123'));
+  // Gofile: no token -> the browser, without contacting Gofile; a saved token reaches the folder crawl.
+  assert.equal(resolverFor('https://gofile.io/d/AbC123'), null);
+  const noToken = await checkLink('https://gofile.io/d/AbC123');
+  assert.equal(noToken.status, 'browser');
+  assert.match(noToken.error, /premium token/);
+  {
+    const realFetch = globalThis.fetch;
+    let auth = null;
+    globalThis.fetch = async (u, o) => {
+      auth = o.headers.Authorization;
+      return new Response(JSON.stringify({ status: 'ok', data: { type: 'folder', name: 'F', children: {} } }));
+    };
+    setAccounts({ gofile: { token: 'tok123' } });
+    const listed = await crawler.crawl('https://gofile.io/d/AbC123');
+    setAccounts({});
+    globalThis.fetch = realFetch;
+    assert.equal(auth, 'Bearer tok123');
+    assert.equal(listed.package, 'F');
+  }
   assert.ok(isFolderLink('https://pixeldrain.com/l/AbC123'));
   assert.ok(isFolderLink('https://www.mediafire.com/folder/abc123def/Stuff'));
   assert.ok(!isFolderLink('https://mega.nz/file/AbCdEfGh#' + 'A'.repeat(43)));
