@@ -450,6 +450,10 @@ const newManager = (settings = {}) => {
   await until(() => a.status === 'error');
   assert.ok(!a.needsBrowser, 'no browser hand-off for MEGA');
   assert.match(a.error, /no decryption key/);
+  // With debrid as the route the link is still checked by the built-in module, not by a debrid service.
+  const viaDebrid = await checkLink('https://mega.nz/file/hYVmXKqL', { registry: { providersFor: () => [{ provider: 'torbox' }, { provider: 'realdebrid' }] }, route: () => 'torbox' });
+  assert.equal(viaDebrid.status, 'offline');
+  assert.match(viaDebrid.error, /no decryption key/);
   // Browser hand-off for other hosts: the file on a sub-domain, or no referrer at all.
   const w = { id: 'w', needsBrowser: true, status: 'browser', pageUrl: 'https://megaup.net/abc/file', browserOpenedAt: 1 };
   m.items.set('w', w);

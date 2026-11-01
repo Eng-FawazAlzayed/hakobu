@@ -55,7 +55,8 @@ async function checkLink(url, { registry, route, headers = {} } = {}) {
     }
   }
   const resolver = resolverFor(url);
-  if (resolver && (via === 'direct' || !providers.length)) {
+  // A built-in check answers for itself, whichever way the file will download.
+  if (resolver && (via === 'direct' || !providers.length || resolver.mod.check)) {
     const host = resolver.name + (resolver.premium ? ' (premium)' : '');
     try {
       if (resolver.mod.check) {
