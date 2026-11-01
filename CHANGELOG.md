@@ -19,6 +19,14 @@ JDownloader-style handling of file hosts and their special cases.
 - Proxies: HTTP and SOCKS4/5, per host, either always or only to skip IP waits (the download moves to the next proxy instead of waiting).
 - Host accounts in Settings: Rapidgator, Nitroflare, Keep2Share, 1fichier, Pixeldrain and Gofile, used before debrid, with a Test button. Stored encrypted.
 - Not enough disk space is checked before a download starts.
+- Google Docs, Sheets and Slides in a shared Drive folder download as .docx, .xlsx and .pptx.
+
+### Fixed (found testing against the live hosts)
+- Empty files (0 bytes) no longer show as "Needs browser" (Google Drive) or fail to start (any server).
+- rentry pastes are read from the page, since their raw view now needs an access code; a paste site's own menu links are no longer picked up.
+- A wrong premium login (Rapidgator, Nitroflare, Keep2Share) is reported once with a clear message instead of being retried.
+- LinkGrabber shows check results for big folders as they come in, not only when all of them are done.
+- Proxies card: the address field gets its own line.
 
 ## [0.3.5] - 2026-11-01
 
