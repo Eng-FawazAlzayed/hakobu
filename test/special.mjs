@@ -23,6 +23,7 @@ const mediafire = require('../src/engine/hosts/mediafire.js');
 const onefichier = require('../src/engine/hosts/onefichier.js');
 const { resolverFor, setAccounts, isFolderLink } = require('../src/engine/resolvers.js');
 const { TorBox } = require('../src/debrid/torbox.js');
+const simpleHosts = require('../src/engine/hosts/simple.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-special-'));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -522,6 +523,65 @@ const newManager = (settings = {}) => {
     globalThis.fetch = real;
   }
   ok('TorBox: survives dropped polls, submit limit, specific errors (refused, queued, vanished, stalled); MEGA falls back to the built-in module');
+}
+
+// ---- 11d. Send, DataNodes, KrakenFiles parsers; captchas go to the browser, never solved ----
+{
+  const t = simpleHosts._test;
+  assert.equal(t.countdown('<script>var seconds = 2;</script>'), 2);
+  assert.equal(t.countdown('<span id="countdown_str">Wait <span class="seconds">17</span></span>'), 17);
+  const xfs = '<form method="POST"><input type="hidden" name="op" value="download2"><input type="hidden" name="id" value="abc123def"><input type="hidden" name="rand" value="r&amp;1"><input name="method_free" value=""></form>';
+  assert.deepEqual(t.formFields(xfs), { op: 'download2', id: 'abc123def', rand: 'r&1', method_free: '' });
+  assert.equal(t.formFields('<form><input name="q"></form>'), null);
+  assert.equal(t.krakenToken('<form id="dl-form" action="/download/x"><input type="hidden" name="token" value="tok1"></form>'), 'tok1');
+  assert.equal(t.sendCode('https://send.cm/d/abcd1234'), 'abcd1234');
+  assert.equal(t.sendCode('https://send.now/abcd1234ef/game.zip.html'), 'abcd1234ef');
+  assert.deepEqual(t.datanodesPath('https://datanodes.to/abc123/x%20y.zip'), { code: 'abc123', name: 'x y.zip' });
+  assert.deepEqual(t.datanodesPath('https://datanodes.to/d/abc123/x.zip'), { code: 'abc123', name: 'x.zip' });
+  // A person is needed: Cloudflare's check or a captcha field. A comment that only mentions reCAPTCHA doesn't count.
+  const res = h => ({ headers: new Headers(h) });
+  assert.equal(t.needsPerson(res({ 'cf-mitigated': 'challenge' }), ''), 'a bot check');
+  assert.equal(t.needsPerson(res({}), '<title>Just a moment...</title>'), 'a bot check');
+  assert.equal(t.needsPerson(res({}), '<div class="g-recaptcha" data-sitekey="x"></div>'), 'a captcha');
+  assert.equal(t.needsPerson(res({}), '<div class="cf-turnstile"></div>'), 'a captcha');
+  assert.equal(t.needsPerson(res({}), '<!-- reCAPTCHA only exists to fill a token --><form></form>'), null);
+  // Through the real module: the flow runs, and a captcha page ends in the browser without any further request.
+  const real = globalThis.fetch;
+  try {
+    let posted = null;
+    globalThis.fetch = async (u, o = {}) => {
+      if (o.method === 'POST') {
+        posted = o.body.get('op');
+        return new Response(null, { status: 302, headers: { location: 'https://cdn.send.example/f/x.zip' } });
+      }
+      return new Response(xfs, { status: 200 });
+    };
+    const send = simpleHosts.find(h => h.id === 'send');
+    const r = await send.resolve('https://send.cm/abcd1234ef', {});
+    assert.equal(r.url, 'https://cdn.send.example/f/x.zip');
+    assert.equal(posted, 'download2');
+    let posts = 0;
+    globalThis.fetch = async (u, o = {}) => {
+      if (o.method === 'POST') posts++;
+      return new Response('<form><input type="hidden" name="op" value="download2"><div class="h-captcha"></div></form>', { status: 200 });
+    };
+    await assert.rejects(send.resolve('https://send.now/abcd1234ef', {}), e => e.browser && /captcha/.test(e.message));
+    assert.equal(posts, 0, 'nothing was posted past the captcha');
+    globalThis.fetch = async () => new Response(JSON.stringify({ url: 'https%3A%2F%2Fcdn.dn.example%2Fx.zip' }), { status: 200 });
+    const dn = await simpleHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {});
+    assert.equal(dn.url, 'https://cdn.dn.example/x.zip');
+    globalThis.fetch = async () => new Response('<title>File Not Found</title>', { status: 404 });
+    await assert.rejects(simpleHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {}), e => e.permanent);
+  } finally {
+    globalThis.fetch = real;
+  }
+  // Debrid keeps its place when it's set up; the built-in module works without it.
+  const m = newManager({ torboxKey: 'k' });
+  m.hosters.data.torbox = [{ name: 'DataNodes', domains: ['datanodes.to'], up: true }];
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'torbox');
+  assert.equal(newManager().defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
+  assert.ok(resolverFor('https://datanodes.to/abc/x.zip') && resolverFor('https://send.now/abc') && resolverFor('https://krakenfiles.com/view/a/file.html'));
+  ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; debrid is still used when set up');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----

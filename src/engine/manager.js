@@ -395,7 +395,7 @@ class Manager extends EventEmitter {
           return this.fallBack(parent, e);
         }
         // Retrying without debrid: try again a couple of times before giving up (pages can't be retried into files).
-        if (it.fallbackFrom && !(e instanceof PageError) && (it.fallbackAttempts || 0) < (this.settings.fallbackRetries ?? 2)) {
+        if (it.fallbackFrom && !(e instanceof PageError) && !(e instanceof HostError && (e.permanent || e.browser)) && (it.fallbackAttempts || 0) < (this.settings.fallbackRetries ?? 2)) {
           it.fallbackAttempts = (it.fallbackAttempts || 0) + 1;
           it.status = 'retrying';
           it.error = `${e.message}, retry ${it.fallbackAttempts} of ${this.settings.fallbackRetries ?? 2}`;
