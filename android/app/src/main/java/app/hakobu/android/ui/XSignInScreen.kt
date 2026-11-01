@@ -1,6 +1,7 @@
 package app.hakobu.android.ui
 
 import android.annotation.SuppressLint
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -55,6 +56,8 @@ fun XSignInScreen(hakobu: Hakobu, onClose: () -> Unit, onSignedIn: () -> Unit) {
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 factory = { context ->
                     WebView(context).apply {
+                        // Without this the view wraps its content, and X's page lays itself out at zero height.
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         // The stock WebView agent marks itself as embedded; X gets a normal mobile Chrome one instead.
