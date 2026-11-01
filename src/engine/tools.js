@@ -77,7 +77,7 @@ async function retrying(url, fn, tries = 5) {
     try {
       return await fn();
     } catch (e) {
-      if (attempt >= tries || /HTTP 4dd/.test(e.message)) throw new Error(netMessage(e, url));
+      if (attempt >= tries || /HTTP 4\d\d/.test(e.message)) throw new Error(netMessage(e, url));
       await new Promise(r => setTimeout(r, retryMs * attempt));
     }
   }
