@@ -113,7 +113,7 @@ private fun duration(sec: Int?): String? {
 }
 
 @Composable
-fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll: () -> Unit, onFileLink: (String) -> Unit) {
+fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll: () -> Unit, onSignInToX: () -> Unit, onFileLink: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by hakobu.settings.collectAsState()
@@ -221,6 +221,7 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
                 },
                 onQuality = { state.quality = it },
                 onRetry = { state.infoFor = null; state.attempt++ },
+                onSignInToX = onSignInToX,
                 onDownload = {
                     val l = link ?: return@PreviewCard
                     val info = state.info
@@ -230,7 +231,7 @@ fun MediaScreen(hakobu: Hakobu, state: MediaState, modifier: Modifier, onSeeAll:
                             listOf(
                                 AddRequest(
                                     link = l.copy(name = info?.title ?: l.name, playlist = info?.isPlaylist ?: l.playlist),
-                                    mediaFormat = format,
+                                    mediaFormat = if ((info?.photoCount ?: 0) > 0) MediaFormats.PHOTO else format,
                                     mediaQuality = quality,
                                     thumbnail = info?.thumbnail,
                                     uploader = info?.uploader,
@@ -292,6 +293,7 @@ private fun PreviewCard(
     onFormat: (String) -> Unit,
     onQuality: (String) -> Unit,
     onRetry: () -> Unit,
+    onSignInToX: () -> Unit,
     onDownload: () -> Unit,
 ) {
     Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
@@ -302,11 +304,15 @@ private fun PreviewCard(
                 }
                 when {
                     loading -> CircularProgressIndicator(Modifier.size(36.dp), strokeWidth = 3.dp)
-                    info != null -> Box(Modifier.size(56.dp).clip(CircleShape).background(Color(0xB30B0D12)), contentAlignment = Alignment.Center) {
+                    info != null && info.photoCount == 0 -> Box(Modifier.size(56.dp).clip(CircleShape).background(Color(0xB30B0D12)), contentAlignment = Alignment.Center) {
                         Icon(if (info.isPlaylist) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.Filled.PlayArrow, null, tint = Color.White)
                     }
                 }
-                val badge = if (info?.isPlaylist == true) info.entries?.let { "$it videos" } else duration(info?.durationSec)
+                val badge = when {
+                    (info?.photoCount ?: 0) > 1 -> "${info?.photoCount} photos"
+                    info?.isPlaylist == true -> info.entries?.let { "$it videos" }
+                    else -> duration(info?.durationSec)
+                }
                 if (badge != null) {
                     Text(
                         badge,
@@ -321,7 +327,10 @@ private fun PreviewCard(
                     error != null -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Couldn't read this link", style = MaterialTheme.typography.titleMedium)
                         Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = onRetry, contentPadding = ButtonDefaults.TextButtonContentPadding) { Text("Try again") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (MediaFormats.needsXSignIn(error)) FilledTonalButton(onClick = onSignInToX) { Text("Sign in to X") }
+                            TextButton(onClick = onRetry, contentPadding = ButtonDefaults.TextButtonContentPadding) { Text("Try again") }
+                        }
                     }
                     info == null -> Text(if (loading) "Looking up the video…" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else -> Column {
@@ -331,8 +340,9 @@ private fun PreviewCard(
                     }
                 }
 
+                val photos = info?.photoCount ?: 0
                 // Video / audio switch
-                Row(
+                if (photos == 0) Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerLowest).padding(4.dp),
                 ) {
                     listOf("mp4" to "Video · MP4", "mp3" to "Audio · MP3").forEach { (f, label) ->
@@ -358,7 +368,7 @@ private fun PreviewCard(
 
                 // Quality chips
                 val qualities = if (format == "mp3") MediaFormats.AUDIO_QUALITIES else MediaFormats.VIDEO_QUALITIES
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (photos == 0) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     qualities.forEach { q ->
                         val selected = q == quality
                         Surface(
@@ -389,6 +399,8 @@ private fun PreviewCard(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when {
+                            photos == 1 -> "Download photo"
+                            photos > 1 -> "Download $photos photos"
                             info?.isPlaylist == true -> "Download playlist"
                             format == "mp3" && state.trim -> "Download this part"
                             format == "mp3" -> "Download audio"
@@ -429,7 +441,7 @@ private fun RecentRow(item: DownloadItem) {
 
 fun mediaStatus(item: DownloadItem): String {
     val kind = (item.mediaFormat ?: "mp4").uppercase()
-    val q = item.mediaQuality?.let { if (item.mediaFormat == "mp3") "$it kbps" else MediaFormats.videoLabel(it) }
+    val q = item.mediaQuality?.takeIf { item.mediaFormat != MediaFormats.PHOTO }?.let { if (item.mediaFormat == "mp3") "$it kbps" else MediaFormats.videoLabel(it) }
     val clip = MediaFormats.clipLabel(item.clipStart, item.clipEnd)
     return when (item.status) {
         Status.QUEUED -> listOfNotNull(kind, clip, "Waiting").joinToString(" · ")

@@ -9,6 +9,8 @@ data class MediaInfo(
     val site: String?,
     val isPlaylist: Boolean,
     val entries: Int?,
+    /** A post with only photos; downloaded with mediaFormat = [MediaFormats.PHOTO]. */
+    val photoCount: Int = 0,
 )
 
 data class MediaProgress(
@@ -33,6 +35,17 @@ interface MediaEngine {
 }
 
 object MediaFormats {
+    const val PHOTO = "photo"
+    const val X_LOGIN_REQUIRED = "x-login-required"
+    const val X_NO_MEDIA = "x-no-media"
+    const val X_GONE = "x-gone"
+    const val X_SIGNIN_REJECTED = "x-signin-rejected"
+    private const val X_SIGN_IN_MESSAGE = "X only shows this post to signed-in accounts, usually because it's age-restricted. Sign in to X to download it."
+    private const val X_REJECTED_MESSAGE = "X still won't show this post. Your sign-in may have expired, or it's an age-restricted post with only photos, which Hakobu can't fetch yet. Try signing in again."
+
+    /** An error the "Sign in to X" button can help with. */
+    fun needsXSignIn(error: String?) = error == X_SIGN_IN_MESSAGE || error == X_REJECTED_MESSAGE
+
     val VIDEO_QUALITIES = listOf("2160", "1440", "1080", "720", "480")
     val AUDIO_QUALITIES = listOf("320", "256", "192", "128")
 
@@ -102,12 +115,17 @@ object MediaFormats {
     fun itemOf(line: String): String? = ITEM.find(line)?.let { "Item ${it.groupValues[1]} of ${it.groupValues[2]}" }
 
     private val RULES = listOf(
+        Regex("$X_LOGIN_REQUIRED|NSFW tweet requires authentication") to X_SIGN_IN_MESSAGE,
+        Regex("$X_SIGNIN_REJECTED|Could not authenticate you", RegexOption.IGNORE_CASE) to X_REJECTED_MESSAGE,
+        Regex(X_NO_MEDIA) to "This X post has no video or photos to download.",
+        Regex(X_GONE) to "This X post is gone: it was deleted, or the link is wrong.",
         Regex("confirm you.?re not a bot|sign in to confirm", RegexOption.IGNORE_CASE) to "YouTube is asking to confirm you're not a bot (too many downloads from this connection). Wait a while and retry.",
         Regex("HTTP Error 429|Too Many Requests", RegexOption.IGNORE_CASE) to "YouTube is rate-limiting this connection (HTTP 429). Wait a bit and retry.",
         Regex("Private video", RegexOption.IGNORE_CASE) to "This video is private.",
         Regex("members-only|join this channel", RegexOption.IGNORE_CASE) to "This video is for channel members only.",
         Regex("age.?restricted|confirm your age|inappropriate for some users", RegexOption.IGNORE_CASE) to "This video is age-restricted.",
         Regex("Video unavailable|This video is not available|has been removed", RegexOption.IGNORE_CASE) to "This video is unavailable (removed, blocked in your country, or the link is wrong).",
+        Regex("No video could be found in this tweet|Requested tweet is unavailable", RegexOption.IGNORE_CASE) to "X didn't give us a video for this post. It may only have text, or X may only show it to signed-in accounts (age-restricted, protected or deleted posts).",
         Regex("Unsupported URL", RegexOption.IGNORE_CASE) to "This site isn't supported.",
         Regex("""getaddrinfo|Unable to download webpage.*(timed out|resolve)|No address associated|Network is unreachable""", RegexOption.IGNORE_CASE) to "Can't reach the site: check your internet connection.",
         Regex("Requested format is not available", RegexOption.IGNORE_CASE) to "That quality isn't available for this video.",

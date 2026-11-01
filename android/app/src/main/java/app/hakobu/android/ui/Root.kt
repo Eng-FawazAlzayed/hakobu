@@ -1,5 +1,6 @@
 package app.hakobu.android.ui
 
+import androidx.compose.runtime.mutableStateOf
 import android.net.Uri
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ fun HakobuRoot(hakobu: Hakobu, incoming: MutableStateFlow<Incoming?>, readTorren
     val grabber = remember { GrabberState() }
     val media = remember { MediaState() }
     val pending by incoming.collectAsState()
+    var signingInToX by rememberSaveable { mutableStateOf(false) }
 
     // Shared video links open on the media screen; everything else lands in Links.
     LaunchedEffect(pending) {
@@ -58,6 +60,20 @@ fun HakobuRoot(hakobu: Hakobu, incoming: MutableStateFlow<Incoming?>, readTorren
             null -> return@LaunchedEffect
         }
         incoming.value = null
+    }
+
+    if (signingInToX) {
+        XSignInScreen(
+            hakobu,
+            onClose = { signingInToX = false },
+            onSignedIn = {
+                signingInToX = false
+                // Look the link up again, now with the login.
+                media.infoFor = null
+                media.attempt++
+            },
+        )
+        return
     }
 
     Scaffold(
@@ -90,6 +106,7 @@ fun HakobuRoot(hakobu: Hakobu, incoming: MutableStateFlow<Incoming?>, readTorren
             Tab.MEDIA -> MediaScreen(
                 hakobu, media, modifier,
                 onSeeAll = { tab = Tab.DOWNLOADS.ordinal },
+                onSignInToX = { signingInToX = true },
                 onFileLink = { text ->
                     grabber.appendText(text)
                     tab = Tab.LINKS.ordinal
@@ -97,7 +114,7 @@ fun HakobuRoot(hakobu: Hakobu, incoming: MutableStateFlow<Incoming?>, readTorren
             )
             Tab.LINKS -> GrabberScreen(hakobu, grabber, modifier, readTorrent, onStarted = { tab = Tab.DOWNLOADS.ordinal })
             Tab.DOWNLOADS -> DownloadsScreen(hakobu, modifier, onAddLinks = { tab = Tab.LINKS.ordinal })
-            Tab.SETTINGS -> SettingsScreen(hakobu, modifier)
+            Tab.SETTINGS -> SettingsScreen(hakobu, modifier, onSignInToX = { signingInToX = true })
         }
     }
 }

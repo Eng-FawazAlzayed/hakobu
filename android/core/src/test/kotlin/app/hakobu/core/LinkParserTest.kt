@@ -25,6 +25,38 @@ class LinkParserTest {
     }
 
     @Test
+    fun unescapesHtmlInLinks() {
+        val e = LinkParser.parse("https://example.com/a.zip?a=b&amp;s=20")
+        assertEquals("https://example.com/a.zip?a=b&s=20", e[0].source)
+    }
+
+    @Test
+    fun normalizesEveryFormOfAnXPost() {
+        val want = "https://x.com/NASA/status/123"
+        listOf(
+            "https://x.com/NASA/status/123?a=b&amp;s=20",
+            "https://x.com/NASA/status/123?s=20&t=abc",
+            "https://x.com/NASA/status/123/video/1",
+            "https://x.com/NASA/status/123/photo/2?s=46",
+            "https://twitter.com/NASA/status/123",
+            "https://www.twitter.com/NASA/status/123",
+            "https://mobile.twitter.com/NASA/status/123",
+            "https://vxtwitter.com/NASA/status/123",
+            "https://fxtwitter.com/NASA/status/123",
+            "https://d.fxtwitter.com/NASA/status/123",
+            "https://fixupx.com/NASA/status/123",
+        ).forEach { url ->
+            val e = LinkParser.parse(url).single()
+            assertEquals(want, e.source, url)
+            assertEquals(LinkKind.MEDIA, e.kind, url)
+        }
+        assertEquals("https://x.com/i/status/123", LinkParser.parse("https://twitter.com/i/status/123").single().source)
+        assertEquals("https://x.com/i/web/status/123", LinkParser.parse("https://x.com/i/web/status/123?s=20").single().source)
+        assertEquals("https://x.com/NASA", LinkParser.parse("https://x.com/NASA").single().source)
+        assertEquals(LinkKind.HTTP, LinkParser.parse("https://notx.com/a/status/123").single().kind)
+    }
+
+    @Test
     fun deduplicatesByInfoHash() {
         val e = LinkParser.parse("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567 0123456789abcdef0123456789abcdef01234567")
         assertEquals(1, e.size)

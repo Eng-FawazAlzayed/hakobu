@@ -33,6 +33,12 @@ object LinkParser {
         "bandcamp.com", "tiktok.com", "x.com", "twitter.com", "instagram.com", "reddit.com", "v.redd.it", "bilibili.com", "nicovideo.jp", "streamable.com",
     )
 
+    // X posts in every form people share them; fxtwitter and friends are embed-fixing mirrors of x.com. A /photo/1 or
+    // /video/1 ending is dropped: yt-dlp fails on /video/1 for some posts ("Media #1 is not a video").
+    private val X_POST = Regex("""^https?://(?:[\w-]+\.)?(?:x|twitter|fxtwitter|vxtwitter|fixupx|fixvx)\.com/((?:[^/?#]+/){1,2}status(?:es)?/\d+)""", RegexOption.IGNORE_CASE)
+
+    fun normalizeX(url: String): String = X_POST.find(url)?.let { "https://x.com/${it.groupValues[1]}" } ?: url
+
     private val MAGNET = Regex("""magnet:\?[^\s"'<>]+""", RegexOption.IGNORE_CASE)
     private val URL = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
     private val HASH = Regex("""\b[a-f0-9]{40}\b""", RegexOption.IGNORE_CASE)
@@ -109,7 +115,8 @@ object LinkParser {
         rest = MAGNET.replace(rest, " ")
 
         for (m in URL.findAll(rest)) {
-            val url = TRAILING.replace(m.value, "")
+            // Links copied out of web pages can arrive HTML-escaped.
+            val url = normalizeX(TRAILING.replace(m.value.replace("&amp;", "&"), ""))
             val parsed = url.toHttpUrlOrNull() ?: continue
             val isTorrent = parsed.encodedPath.endsWith(".torrent", ignoreCase = true)
             if (!isTorrent && isMediaUrl(url)) {

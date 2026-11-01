@@ -45,7 +45,9 @@ class Hakobu(private val context: Context) {
 
     val store = MediaStoreFileStore(context)
 
-    val media = YtDlpEngine(context, store)
+    val xAccount = XAccount(context)
+
+    val media = YtDlpEngine(context, store, client, xAccount)
 
     val manager = DownloadManager(
         client = client,

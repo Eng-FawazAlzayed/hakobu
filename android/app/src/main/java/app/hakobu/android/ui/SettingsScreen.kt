@@ -2,6 +2,7 @@
 
 package app.hakobu.android.ui
 
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,7 +45,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(hakobu: Hakobu, modifier: Modifier) {
+fun SettingsScreen(hakobu: Hakobu, modifier: Modifier, onSignInToX: () -> Unit) {
     val s by hakobu.settings.collectAsState()
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -67,6 +68,23 @@ fun SettingsScreen(hakobu: Hakobu, modifier: Modifier) {
             ChoiceRow("Video quality", MediaFormats.VIDEO_QUALITIES, s.ytVideoQuality, MediaFormats::videoLabel) { q -> hakobu.updateSettings { it.copy(ytVideoQuality = q) } }
             ChoiceRow("Audio quality", MediaFormats.AUDIO_QUALITIES, s.ytAudioQuality, { "$it kbps" }) { q -> hakobu.updateSettings { it.copy(ytAudioQuality = q) } }
             YtDlpRow(hakobu)
+        }
+
+        Section("Accounts") {
+            val signedIn by hakobu.xAccount.signedIn.collectAsState()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("X (Twitter)", style = MaterialTheme.typography.titleSmall)
+                    Text(if (signedIn) "Signed in" else "Needed for age-restricted posts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (signedIn) OutlinedButton(onClick = { hakobu.xAccount.signOut() }) { Text("Sign out") }
+                else FilledTonalButton(onClick = onSignInToX) { Text("Sign in") }
+            }
+            Text(
+                "You sign in on X's own page, so Hakobu never sees your password. It keeps only the login cookies, encrypted on this device, and uses them only for X links.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Section("Debrid") {
