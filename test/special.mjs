@@ -24,6 +24,7 @@ const onefichier = require('../src/engine/hosts/onefichier.js');
 const { resolverFor, setAccounts, isFolderLink } = require('../src/engine/resolvers.js');
 const { TorBox } = require('../src/debrid/torbox.js');
 const simpleHosts = require('../src/engine/hosts/simple.js');
+const tools = require('../src/engine/tools.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-special-'));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -586,6 +587,40 @@ const newManager = (settings = {}) => {
   assert.equal(newManager().defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
   assert.ok(resolverFor('https://datanodes.to/abc/x.zip') && resolverFor('https://send.now/abc') && resolverFor('https://krakenfiles.com/view/a/file.html'));
   ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; debrid is still used when set up');
+}
+
+// ---- 11e. media tools: dropped connections while checking versions and checksums ----
+{
+  const real = globalThis.fetch;
+  tools._test.setRetryMs(1);
+  const drop = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
+  try {
+    let n = 0;
+    globalThis.fetch = async () => {
+      if (++n < 3) throw drop();
+      return new Response(null, { status: 302, headers: { location: 'https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.1' } });
+    };
+    assert.equal(await tools.TOOLS['yt-dlp'].latest(), '2026.10.1');
+    assert.equal(n, 3, 'tried again after two dropped connections');
+    n = 0;
+    globalThis.fetch = async () => {
+      n++;
+      throw drop();
+    };
+    await assert.rejects(tools.TOOLS.ffmpeg.latest(), /Couldn't connect to www\.gyan\.dev: timed out \(UND_ERR_CONNECT_TIMEOUT\)/);
+    assert.equal(n, 5);
+    n = 0;
+    globalThis.fetch = async () => {
+      n++;
+      return new Response('', { status: 404 });
+    };
+    await assert.rejects(tools.TOOLS.ffmpeg.latest(), /HTTP 404/);
+    assert.equal(n, 1, 'a 404 is not retried');
+  } finally {
+    globalThis.fetch = real;
+    tools._test.setRetryMs(1500);
+  }
+  ok('media tools: version and checksum checks survive dropped connections; errors name the host and reason');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----

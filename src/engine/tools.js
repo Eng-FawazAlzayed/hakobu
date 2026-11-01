@@ -57,17 +57,45 @@ const TOOLS = {
   },
 };
 
+let retryMs = 1500;
+
+// Node only says "fetch failed": name the host and the real reason.
+function netMessage(e, url) {
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {}
+  const code = e.cause?.code || e.code || e.name;
+  if (code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'TimeoutError') return `Couldn't connect to ${host}: timed out (${code}). Check your connection and try again`;
+  if (e.message === 'fetch failed') return `Couldn't connect to ${host} (${e.cause?.code || e.cause?.message || 'network error'}). Check your connection and try again`;
+  return e.message;
+}
+
+// A dropped connection is worth trying again; an answer like 404 isn't.
+async function retrying(url, fn, tries = 5) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= tries || /HTTP 4dd/.test(e.message)) throw new Error(netMessage(e, url));
+      await new Promise(r => setTimeout(r, retryMs * attempt));
+    }
+  }
+}
+
 async function tagFromRedirect(url) {
-  const res = await fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+  const res = await retrying(url, () => fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) }));
   const tag = /\/tag\/([^/?#]+)/.exec(res.headers.get('location') || '')?.[1];
   if (!tag) throw new Error(`Couldn't read the latest version from ${url}`);
   return decodeURIComponent(tag);
 }
 
-async function text(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
-  return res.text();
+function text(url) {
+  return retrying(url, async () => {
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+    return res.text();
+  });
 }
 
 // Download to <dest>.part (resuming after dropped connections), then only a matching SHA-256 gets renamed into place.
@@ -98,9 +126,9 @@ async function download(url, dest, sha256, onProgress) {
     } catch (e) {
       if (attempt >= 6 || /HTTP 4\d\d/.test(e.message)) {
         await fsp.rm(part, { force: true });
-        throw new Error(`${path.basename(dest)}: ${e.message}${e.cause?.code ? ' (' + e.cause.code + ')' : ''}`);
+        throw new Error(`${path.basename(dest)}: ${netMessage(e, url)}`);
       }
-      await new Promise(r => setTimeout(r, 1500 * attempt));
+      await new Promise(r => setTimeout(r, retryMs * attempt));
     }
   }
   const actual = await new Promise((resolve, reject) => {
@@ -191,6 +219,7 @@ class ToolManager {
           results[name] = { ok: true, version };
           onProgress?.({ tool: name, label: t.label, fraction: 1, step: 'done', version });
         } catch (e) {
+          await fsp.rm(path.join(this.dir, '.stage-' + name), { recursive: true, force: true }).catch(() => {});
           results[name] = { ok: false, error: e.message };
           onProgress?.({ tool: name, label: t.label, fraction: 1, step: 'error', error: e.message });
         }
@@ -210,4 +239,4 @@ class ToolManager {
   }
 }
 
-module.exports = { ToolManager, TOOLS, cmpVersion, download };
+module.exports = { ToolManager, TOOLS, cmpVersion, download, _test: { setRetryMs: ms => (retryMs = ms) } };
