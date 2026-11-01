@@ -46,7 +46,7 @@ Plugin sources, stability fixes, and JDownloader-style handling of file hosts an
 - TorBox: submitting a link can't hang (90 second limit, tried again after network problems), a dropped connection no longer ends a download TorBox is still working on, a download TorBox dropped or queued no longer waits forever, and the error says what happened.
 - Browser hand-off also catches downloads served from a sub-domain or sent without a referrer (needs the Hakobu extension 0.3.1).
 - The "add the API key" hint no longer shows when the key is already set.
-- Installing yt-dlp, Deno and ffmpeg retries the version and checksum checks after a dropped connection, and "fetch failed" now names the host and the reason.
+- Installing yt-dlp, Deno and ffmpeg retries the version and checksum checks after a dropped connection, and "fetch failed" now names the host and the reason. If gyan.dev can't be reached, ffmpeg comes from the same builder's GitHub releases, still SHA-256 checked.
 
 ## [0.1.1] - 2026-10-31
 

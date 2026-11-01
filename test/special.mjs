@@ -607,15 +607,32 @@ const newManager = (settings = {}) => {
       n++;
       throw drop();
     };
-    await assert.rejects(tools.TOOLS.ffmpeg.latest(), /Couldn't connect to www\.gyan\.dev: timed out \(UND_ERR_CONNECT_TIMEOUT\)/);
+    await assert.rejects(tools.TOOLS['yt-dlp'].latest(), /Couldn't connect to github\.com: timed out \(UND_ERR_CONNECT_TIMEOUT\)/);
     assert.equal(n, 5);
     n = 0;
     globalThis.fetch = async () => {
       n++;
       return new Response('', { status: 404 });
     };
-    await assert.rejects(tools.TOOLS.ffmpeg.latest(), /HTTP 404/);
+    await assert.rejects(tools.TOOLS.deno.install(path.join(tmp, 'nostage')), /HTTP 404/);
     assert.equal(n, 1, 'a 404 is not retried');
+    // gyan.dev unreachable: ffmpeg comes from the builder's GitHub release, and its SHA-256 is still enforced.
+    const seen = [];
+    const digest = 'a'.repeat(64);
+    globalThis.fetch = async (u, o = {}) => {
+      u = String(u);
+      seen.push(u);
+      if (u.includes('gyan.dev')) throw drop();
+      if (u.includes('/releases/latest') && u.includes('api.github.com')) return new Response(JSON.stringify({ assets: [{ name: 'ffmpeg-9-full_build.zip', digest: 'sha256:' + 'b'.repeat(64), browser_download_url: 'https://github.example/full.zip' }, { name: 'ffmpeg-9-essentials_build.zip', digest: 'sha256:' + digest, browser_download_url: 'https://github.example/essentials.zip' }] }));
+      if (u.includes('/releases/latest')) return new Response(null, { status: 302, headers: { location: 'https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2' } });
+      return new Response(Buffer.from('not the right bytes'));
+    };
+    assert.equal(await tools.TOOLS.ffmpeg.latest(), '9.0.2');
+    const stage = path.join(tmp, 'ffstage');
+    fs.mkdirSync(stage, { recursive: true });
+    await assert.rejects(tools.TOOLS.ffmpeg.install(stage), /Checksum mismatch/);
+    assert.ok(seen.includes('https://github.example/essentials.zip') && !seen.includes('https://github.example/full.zip'));
+    assert.ok(!fs.existsSync(path.join(stage, 'ffmpeg.zip')), 'a file that fails its check is not kept');
   } finally {
     globalThis.fetch = real;
     tools._test.setRetryMs(1500);

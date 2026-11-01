@@ -43,13 +43,26 @@ const TOOLS = {
   ffmpeg: {
     label: 'ffmpeg',
     files: ['ffmpeg.exe', 'ffprobe.exe'],
-    latest: async () => (await text('https://www.gyan.dev/ffmpeg/builds/release-version')).trim(),
+    latest: async () => {
+      try {
+        return (await text('https://www.gyan.dev/ffmpeg/builds/release-version', 2)).trim();
+      } catch {
+        return tagFromRedirect('https://github.com/GyanD/codexffmpeg/releases/latest');
+      }
+    },
+    // gyan.dev, or the same builder's GitHub releases when that site can't be reached.
     async install(dir, onProgress) {
-      const base = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip';
-      const hash = /\b([0-9a-f]{64})\b/i.exec(await text(base + '.sha256'))?.[1];
-      if (!hash) throw new Error('ffmpeg: no checksum found');
       const zip = path.join(dir, 'ffmpeg.zip');
-      await download(base, zip, hash, onProgress);
+      try {
+        const base = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip';
+        const hash = /\b([0-9a-f]{64})\b/i.exec(await text(base + '.sha256', 2))?.[1];
+        if (!hash) throw new Error('ffmpeg: no checksum found');
+        await download(base, zip, hash, onProgress);
+      } catch (e) {
+        if (/Checksum mismatch/.test(e.message)) throw e; // a bad file is a reason to stop, not to look elsewhere
+        const { url, hash } = ffmpegRelease(JSON.parse(await text('https://api.github.com/repos/GyanD/codexffmpeg/releases/latest')));
+        await download(url, zip, hash, onProgress);
+      }
       await unzip(zip, dir, ['ffmpeg.exe', 'ffprobe.exe']);
       await fsp.rm(zip, { force: true });
     },
@@ -58,6 +71,14 @@ const TOOLS = {
 };
 
 let retryMs = 1500;
+
+// The essentials zip of a GitHub release; GitHub reports each file's SHA-256 as its "digest".
+function ffmpegRelease(release) {
+  const asset = (release?.assets || []).find(a => /essentials_build\.zip$/i.test(a.name));
+  const hash = /^sha256:([0-9a-f]{64})$/i.exec(asset?.digest || '')?.[1];
+  if (!hash) throw new Error('ffmpeg: no checksum found');
+  return { url: asset.browser_download_url, hash };
+}
 
 // Node only says "fetch failed": name the host and the real reason.
 function netMessage(e, url) {
@@ -90,12 +111,12 @@ async function tagFromRedirect(url) {
   return decodeURIComponent(tag);
 }
 
-function text(url) {
+function text(url, tries) {
   return retrying(url, async () => {
     const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
     if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
     return res.text();
-  });
+  }, tries);
 }
 
 // Download to <dest>.part (resuming after dropped connections), then only a matching SHA-256 gets renamed into place.
