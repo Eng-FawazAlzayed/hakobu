@@ -1,4 +1,4 @@
-// Host special cases (0.4.0): waits, retries, mirrors, hash checks, per-host limits, chunk splitting, disk space,
+// Host special cases: waits, retries, mirrors, hash checks, per-host limits, chunk splitting, disk space,
 // "file exists", MEGA-style decryption, proxies, and the link crawler (DLC, folder listings, protectors). All offline.
 import http from 'node:http';
 import net from 'node:net';
