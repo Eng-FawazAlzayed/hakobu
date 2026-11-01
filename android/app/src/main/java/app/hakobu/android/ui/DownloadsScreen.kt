@@ -1,5 +1,19 @@
 package app.hakobu.android.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -30,7 +44,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -64,8 +77,28 @@ fun DownloadsScreen(hakobu: Hakobu, modifier: Modifier, onAddLinks: () -> Unit) 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var confirmRemove by remember { mutableStateOf<DownloadItem?>(null) }
+    var detailsId by remember { mutableStateOf<String?>(null) }
+    val snackbars = remember { SnackbarHostState() }
 
-    Column(modifier.fillMaxSize()) {
+    fun open(item: DownloadItem) {
+        val ref = item.storeRef ?: return
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(Uri.parse(ref), hakobu.store.mimeType(item.name))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            context.startActivity(Intent.createChooser(intent, item.name))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Finished items ask what to do with the file; anything still going is simply cancelled.
+    fun trash(item: DownloadItem) {
+        if (item.status == Status.COMPLETED || item.status == Status.HANDED_OFF) confirmRemove = item
+        else scope.launch { hakobu.manager.remove(item.id, false) }
+    }
+
+    Box(modifier.fillMaxSize()) { Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Downloads", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             val anyRunning = items.any { it.status == Status.ACTIVE || it.status == Status.QUEUED || it.status == Status.RESOLVING }
@@ -98,63 +131,102 @@ fun DownloadsScreen(hakobu: Hakobu, modifier: Modifier, onAddLinks: () -> Unit) 
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
             ) {
                 items(items, key = { it.id }) { item ->
-                    DownloadRow(
-                        item = item,
-                        onPause = { scope.launch { hakobu.manager.pause(item.id) } },
-                        onResume = { scope.launch { hakobu.manager.resume(item.id) } },
-                        onRemove = { confirmRemove = item },
-                        onOpen = {
-                            val ref = item.storeRef ?: return@DownloadRow
-                            val intent = Intent(Intent.ACTION_VIEW)
-                                .setDataAndType(Uri.parse(ref), hakobu.store.mimeType(item.name))
-                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            try {
-                                context.startActivity(Intent.createChooser(intent, item.name))
-                            } catch (e: ActivityNotFoundException) {
-                                Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                    )
+                    SwipeToReveal(onTrash = { trash(item) }) {
+                        DownloadRow(
+                            item = item,
+                            onPause = { scope.launch { hakobu.manager.pause(item.id) } },
+                            onResume = { scope.launch { hakobu.manager.resume(item.id) } },
+                            onOpen = { open(item) },
+                            onDetails = { detailsId = item.id },
+                        )
+                    }
                 }
             }
         }
     }
+        SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter))
+    }
+
+    items.firstOrNull { it.id == detailsId }?.let { item ->
+        DownloadSheet(
+            item = item,
+            onOpenFile = { open(item) },
+            onRemove = {
+                detailsId = null
+                trash(item)
+            },
+            onDismiss = { detailsId = null },
+        )
+    }
 
     confirmRemove?.let { item ->
-        var deleteFile by remember(item.id) { mutableStateOf(false) }
-        val finished = item.status == Status.COMPLETED
         AlertDialog(
             onDismissRequest = { confirmRemove = null },
             title = { Text("Remove download?") },
-            text = {
-                Column {
-                    Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (finished) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = deleteFile, onCheckedChange = { deleteFile = it })
-                            Text("Also delete the file")
+            text = { Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        confirmRemove = null
+                        scope.launch {
+                            hakobu.manager.remove(item.id, false)
+                            if (snackbars.showSnackbar("Removed from the list", "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                                hakobu.manager.restore(item)
+                            }
                         }
-                    } else if (item.storeRef != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("The partly downloaded file will be deleted.", style = MaterialTheme.typography.bodySmall)
+                    }) { Text("Remove from list") }
+                    if (item.storeRef != null) {
+                        TextButton(onClick = {
+                            confirmRemove = null
+                            scope.launch { hakobu.manager.remove(item.id, true) }
+                        }) { Text("Also delete the file", color = MaterialTheme.colorScheme.error) }
                     }
+                    TextButton(onClick = { confirmRemove = null }) { Text("Cancel") }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { hakobu.manager.remove(item.id, deleteFile) }
-                    confirmRemove = null
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton(onClick = { confirmRemove = null }) { Text("Cancel") } },
         )
     }
 }
 
+/** Swipe the card left to uncover a trash button. The swipe alone never removes anything. */
 @Composable
-private fun DownloadRow(item: DownloadItem, onPause: () -> Unit, onResume: () -> Unit, onRemove: () -> Unit, onOpen: () -> Unit) {
+private fun SwipeToReveal(onTrash: () -> Unit, content: @Composable () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val width = with(LocalDensity.current) { 88.dp.toPx() }
+    val offset = remember { Animatable(0f) }
+    Box(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        if (offset.value < 0f) {
+            Box(
+                Modifier.matchParentSize().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.errorContainer),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                IconButton(
+                    onClick = {
+                        onTrash()
+                        scope.launch { offset.animateTo(0f) }
+                    },
+                    modifier = Modifier.width(88.dp).fillMaxHeight(),
+                ) { Icon(Icons.Filled.Delete, "Remove", tint = MaterialTheme.colorScheme.onErrorContainer) }
+            }
+        }
+        Box(
+            Modifier
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta -> scope.launch { offset.snapTo((offset.value + delta).coerceIn(-width, 0f)) } },
+                    onDragStopped = { scope.launch { offset.animateTo(if (offset.value < -width / 2) -width else 0f) } },
+                ),
+        ) { content() }
+    }
+}
+
+@Composable
+private fun DownloadRow(item: DownloadItem, onPause: () -> Unit, onResume: () -> Unit, onOpen: () -> Unit, onDetails: () -> Unit) {
     val dim = item.status == Status.HANDED_OFF
     Card(
+        onClick = onDetails,
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         colors = CardDefaults.cardColors(
@@ -185,7 +257,6 @@ private fun DownloadRow(item: DownloadItem, onPause: () -> Unit, onResume: () ->
                     Status.COMPLETED -> IconButton(onClick = onOpen) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open") }
                     Status.HANDED_OFF -> {}
                 }
-                IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, "Remove") }
             }
             if (item.status == Status.ACTIVE || item.status == Status.RESOLVING || item.status == Status.PAUSED) {
                 Spacer(Modifier.height(6.dp))

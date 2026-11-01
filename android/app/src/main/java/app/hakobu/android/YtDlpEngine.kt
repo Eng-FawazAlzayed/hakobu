@@ -17,6 +17,7 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
@@ -118,10 +119,24 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
         ensureReady()
         val cookies = xAccount.tempCookies(url)
         try {
-            return lookup(url, playlist, cookies)
+            return onceMoreOnNetworkError { lookup(url, playlist, cookies) }
         } finally {
             cookies?.delete()
         }
+    }
+
+    /** Connections here drop now and then, so a network failure gets one quiet retry before the user sees an error. */
+    private suspend fun <T> onceMoreOnNetworkError(block: suspend () -> T): T = try {
+        block()
+    } catch (e: Exception) {
+        if (e is CancellationException || !MediaFormats.isNetworkError(e.message)) throw e
+        Log.w("Hakobu", "Network error, retrying once: ${e.message?.take(200)}")
+        delay(1500)
+        block()
+    }
+
+    override fun discard(id: String) {
+        File(context.cacheDir, "media/$id").deleteRecursively()
     }
 
     private suspend fun lookup(url: String, playlist: Boolean, cookies: File?): MediaInfo {
@@ -135,7 +150,16 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
             .xCookies(url, cookies)
             // The embed API can't use a login, so a signed-in lookup stays on the main one.
             .apply { if (syndication) addOption("--extractor-args", SYNDICATION) }
-        val out = try {
+        val fast = MediaFormats.fastLookupArgs(url, playlist).takeIf { it.isNotEmpty() }?.let { (flag, value) ->
+            try {
+                runInterruptible(Dispatchers.IO) { YoutubeDL.execute(request(false).addOption(flag, value), null, false, null).out }
+            } catch (e: Exception) {
+                if (e is CancellationException || MediaFormats.isNetworkError(e.message)) throw e
+                Log.w("Hakobu", "Fast lookup failed, using the full one: ${e.message?.take(200)}")
+                null
+            }
+        }
+        val out = fast ?: try {
             runInterruptible(Dispatchers.IO) { YoutubeDL.execute(request(viaSyndication(url) && cookies == null), null, false, null).out }
         } catch (e: Exception) {
             if (e is CancellationException || !isX(url)) throw e
@@ -238,6 +262,8 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
             .addOption("-P", dir.absolutePath)
             .addOption("-o", outputTemplate(item))
             .addOption("--embed-metadata")
+            // Keep the original link inside the file, in the comment tag media players show.
+            .addOption("--parse-metadata", "webpage_url:%(meta_comment)s")
             .addOption("--embed-thumbnail")
             .addOption("--convert-thumbnails", "jpg")
             .addOption(if (item.playlist) "--yes-playlist" else "--no-playlist")
@@ -261,7 +287,7 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
             if (cause is CancellationException) runCatching { YoutubeDL.destroyProcessById(item.id) }
         }
         try {
-            runInterruptible(Dispatchers.IO) {
+            onceMoreOnNetworkError { runInterruptible(Dispatchers.IO) {
                 YoutubeDL.execute(req, item.id, false) { progress, eta, line ->
                     MediaFormats.itemOf(line)?.let { stage = it }
                     MediaFormats.stageOf(line)?.let { stage = it }
@@ -276,7 +302,7 @@ class YtDlpEngine(private val context: Context, private val store: MediaStoreFil
                         )
                     )
                 }
-            }
+            } }
         } finally {
             handle.dispose()
             cookies?.delete()

@@ -32,6 +32,9 @@ interface MediaEngine {
 
     /** Downloads [item] and moves the result into the store. Cancel the coroutine to pause. */
     suspend fun download(item: DownloadItem, onProgress: (MediaProgress) -> Unit): List<MediaFile>
+
+    /** Throw away what an unfinished download of [id] left behind. */
+    fun discard(id: String) {}
 }
 
 object MediaFormats {
@@ -76,6 +79,19 @@ object MediaFormats {
         fun s(v: Double) = "%.3f".format(java.util.Locale.ROOT, v).trimEnd('0').trimEnd('.')
         return listOf("--download-sections", "*${s(start!!)}-${s(end!!)}", "--force-keyframes-at-cuts")
     }
+
+    private val YOUTUBE = Regex("""^https?://([\w-]+\.)*(youtube\.com|youtu\.be|youtube-nocookie\.com)/""", RegexOption.IGNORE_CASE)
+    private val NETWORK_ERROR = Regex("""timed out|timeout|Unable to download (JSON metadata|webpage)|connection reset|Remote end closed|getaddrinfo|Name or service not known|Temporary failure in name|No address associated|Network is unreachable""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The preview only needs the title, picture and length. YouTube's VR client gives those in about 4 s instead of
+     * 15-25 s, because it needs no player code solved. Its format list is short, so downloads use the full lookup.
+     */
+    fun fastLookupArgs(url: String, playlist: Boolean): List<String> =
+        if (!playlist && YOUTUBE.containsMatchIn(url)) listOf("--extractor-args", "youtube:player_client=android_vr") else emptyList()
+
+    /** A failure worth one quiet retry: the site was out of reach, not refusing. */
+    fun isNetworkError(message: String?) = NETWORK_ERROR.containsMatchIn(message.orEmpty())
 
     private val PP_LABEL = mapOf(
         "ExtractAudio" to "Converting to MP3",
@@ -127,7 +143,7 @@ object MediaFormats {
         Regex("Video unavailable|This video is not available|has been removed", RegexOption.IGNORE_CASE) to "This video is unavailable (removed, blocked in your country, or the link is wrong).",
         Regex("No video could be found in this tweet|Requested tweet is unavailable", RegexOption.IGNORE_CASE) to "X didn't give us a video for this post. It may only have text, or X may only show it to signed-in accounts (age-restricted, protected or deleted posts).",
         Regex("Unsupported URL", RegexOption.IGNORE_CASE) to "This site isn't supported.",
-        Regex("""getaddrinfo|Unable to download webpage.*(timed out|resolve)|No address associated|Network is unreachable""", RegexOption.IGNORE_CASE) to "Can't reach the site: check your internet connection.",
+        Regex("""getaddrinfo|Unable to download (webpage|JSON metadata).*(timed out|resolve)|No address associated|Network is unreachable""", RegexOption.IGNORE_CASE) to "Can't reach the site: check your internet connection.",
         Regex("Requested format is not available", RegexOption.IGNORE_CASE) to "That quality isn't available for this video.",
         Regex("n challenge|signature (extraction|solving) failed|js runtime", RegexOption.IGNORE_CASE) to "YouTube changed something. Update yt-dlp in Settings and retry.",
     )

@@ -232,6 +232,35 @@ class DownloadManagerTest {
     }
 
     @Test
+    fun removingMediaCleansUpAndUndoBringsItBack() = runBlocking {
+        val discarded = mutableListOf<String>()
+        val engine = object : MediaEngine {
+            override suspend fun info(url: String, playlist: Boolean) = MediaInfo("Title", null, null, 60, "YouTube", false, null)
+            override suspend fun download(item: DownloadItem, onProgress: (MediaProgress) -> Unit): List<MediaFile> {
+                if (item.name == "stuck") delay(60_000)
+                return listOf(MediaFile("ref://1", "Title.mp4", 2000))
+            }
+            override fun discard(id: String) { discarded += id }
+        }
+        val m = manager(media = engine)
+        m.start()
+        val yt = LinkParser.parse("https://youtu.be/dQw4w9WgXcQ")[0]
+        val stuck = m.add(listOf(AddRequest(yt.copy(name = "stuck"))))[0]
+        m.remove(stuck.id, false)
+        assertEquals(listOf(stuck.id), discarded)
+        assertEquals(0, m.itemsFlow.value.size)
+        val done = m.add(listOf(AddRequest(yt.copy(name = "done"))))[0]
+        m.waitFor("done") { it.firstOrNull()?.status == Status.COMPLETED }
+        val finished = m.itemsFlow.value[0]
+        m.remove(done.id, false)
+        assertEquals(listOf(stuck.id), discarded)
+        m.restore(finished)
+        assertEquals(yt.source, m.itemsFlow.value.single().source)
+        assertEquals(Status.COMPLETED, m.itemsFlow.value.single().status)
+        m.close()
+    }
+
+    @Test
     fun mediaErrorsAndProgressLines() {
         assertEquals("That quality isn't available for this video.", MediaFormats.friendlyError("ERROR: [youtube] x: Requested format is not available"))
         assertEquals("Something odd", MediaFormats.friendlyError("WARNING: a\nERROR: [generic] id: Something odd"))

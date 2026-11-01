@@ -233,10 +233,19 @@ class DownloadManager(
             // An unfinished partial file is useless on its own, so it goes too.
             withContext(Dispatchers.IO) { runCatching { store.delete(ref) } }
         }
+        if (it.via == Route.YTDLP && !finished) withContext(Dispatchers.IO) { runCatching { mediaEngine?.discard(id) } }
         items.remove(id)
         wanted.remove(id)
         dirty = true
         schedule()
+        publish()
+    }
+
+    /** Undo [remove] for an item that was only taken off the list. */
+    suspend fun restore(item: DownloadItem) = withContext(state) {
+        if (item.id in items) return@withContext
+        items[item.id] = item
+        dirty = true
         publish()
     }
 

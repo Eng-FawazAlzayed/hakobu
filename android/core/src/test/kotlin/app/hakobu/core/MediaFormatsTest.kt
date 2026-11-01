@@ -70,6 +70,28 @@ class MediaFormatsTest {
     }
 
     @Test
+    fun fastLookupIsForSingleYouTubeVideos() {
+        val fast = listOf("--extractor-args", "youtube:player_client=android_vr")
+        assertEquals(fast, MediaFormats.fastLookupArgs("https://www.youtube.com/watch?v=a", false))
+        assertEquals(fast, MediaFormats.fastLookupArgs("https://youtu.be/a", false))
+        assertEquals(fast, MediaFormats.fastLookupArgs("https://music.youtube.com/watch?v=a", false))
+        assertTrue(MediaFormats.fastLookupArgs("https://www.youtube.com/playlist?list=a", true).isEmpty())
+        assertTrue(MediaFormats.fastLookupArgs("https://x.com/a/status/1", false).isEmpty())
+        assertTrue(MediaFormats.fastLookupArgs("https://notyoutube.com/a", false).isEmpty())
+    }
+
+    @Test
+    fun networkErrorsAreRetriedAndExplained() {
+        val raw = "ERROR: [twitter] 1: Unable to download JSON metadata: The read operation timed out (caused by TransportError('The read operation timed out'))"
+        assertTrue(MediaFormats.isNetworkError(raw))
+        assertEquals("Can't reach the site: check your internet connection.", MediaFormats.friendlyError(raw))
+        assertTrue(MediaFormats.isNetworkError("getaddrinfo failed"))
+        assertTrue(!MediaFormats.isNetworkError("ERROR: Private video"))
+        assertTrue(!MediaFormats.isNetworkError(MediaFormats.X_LOGIN_REQUIRED))
+        assertTrue(!MediaFormats.isNetworkError(null))
+    }
+
+    @Test
     fun clipLabels() {
         assertEquals("0:30–0:45", MediaFormats.clipLabel(30.0, 45.9))
         assertEquals("59:59–1:02:05", MediaFormats.clipLabel(3599.0, 3725.0))
