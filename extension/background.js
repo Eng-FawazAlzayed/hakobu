@@ -81,7 +81,7 @@ chrome.downloads.onCreated.addListener(async item => {
   let expected = false;
   try {
     await api('/api/ping');
-    if (item.referrer) expected = (await api(`/api/expecting?referrer=${encodeURIComponent(item.referrer)}`)).expecting;
+    expected = (await api(`/api/expecting?referrer=${encodeURIComponent(item.referrer || '')}&url=${encodeURIComponent(url)}`)).expecting;
   } catch {
     return; // Hakobu not running (or an older Hakobu): let the browser handle it
   }

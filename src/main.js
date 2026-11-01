@@ -558,7 +558,7 @@ app.whenReady().then(async () => {
     version: app.getVersion(),
     onLinks: (entries, meta) => {
       // A browser download from a page a "Needs browser" item is waiting on finishes that item instead.
-      const waiting = meta.capture && entries.length === 1 && entries[0].kind === 'http' && manager.matchBrowserWait(meta.referrer);
+      const waiting = meta.capture && entries.length === 1 && entries[0].kind === 'http' && manager.matchBrowserWait(meta.referrer, entries[0].source);
       if (waiting) {
         manager.browserHandoff(waiting.id, entries[0]);
         win?.webContents.send('toast', { kind: 'ok', title: 'Got it from the browser', text: waiting.name });
@@ -568,7 +568,7 @@ app.whenReady().then(async () => {
       if (meta.source === 'clicknload') win?.webContents.send('toast', { kind: 'info', title: "Click'n'Load", text: `${entries.length} link(s) from ${meta.page || 'a website'}` });
     },
     getState: () => ({ active: manager.snapshot().filter(i => i.status === 'active').length }),
-    expecting: referrer => !!manager.matchBrowserWait(referrer),
+    expecting: (referrer, url) => !!manager.matchBrowserWait(referrer, url),
   });
   await startApi();
   // Hosts with wait timers / captchas: optionally open the page in the browser right away (at most one every few seconds).

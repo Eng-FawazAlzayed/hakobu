@@ -41,6 +41,10 @@ Plugin sources, stability fixes, and JDownloader-style handling of file hosts an
 - A wrong premium login (Rapidgator, Nitroflare, Keep2Share) is reported once with a clear message instead of being retried.
 - LinkGrabber shows check results for big folders as they come in, not only when all of them are done.
 - Proxies card: the address field gets its own line.
+- MEGA never goes to "Needs browser": its site decrypts in the page, so the browser can't hand a download back. Problems show as a clear message (no key, password link, quota wait, file gone). URL-encoded links work.
+- TorBox: submitting a link can't hang (90 second limit, tried again after network problems), a dropped connection no longer ends a download TorBox is still working on, a download TorBox dropped or queued no longer waits forever, and the error says what happened.
+- Browser hand-off also catches downloads served from a sub-domain or sent without a referrer (needs the Hakobu extension 0.3.1).
+- The "add the API key" hint no longer shows when the key is already set.
 
 ## [0.1.1] - 2026-10-31
 

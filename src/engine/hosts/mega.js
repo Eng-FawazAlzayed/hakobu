@@ -1,6 +1,7 @@
 // MEGA without an account: file and folder links. MEGA encrypts every file with AES-128-CTR; the key is the part of the
 // link after "#". Hakobu decrypts while it downloads, so any connection can start anywhere (CTR allows random access).
 // Free downloads have a transfer quota per IP; when it runs out MEGA answers 509 and the queue waits (or uses another proxy route).
+// Never sent to the browser: MEGA's site decrypts in the page and saves a blob, which the extension can't hand back.
 const crypto = require('crypto');
 const { fetcher, hostIn, HostError } = require('./common');
 
@@ -56,7 +57,7 @@ function encryptForTest(key, nonce, data) {
 
 // Link forms: /file/ID#KEY, /#!ID!KEY, /folder/ID#KEY, /folder/ID#KEY/file/NODE, /#F!ID!KEY
 function parseLink(url) {
-  const u = String(url);
+  const u = String(url).replace(/%23/g, '#').replace(/%21/g, '!'); // links that went through a URL encoder
   let m = /\/(?:file|embed)\/([\w-]{8})#([\w-]{43})/.exec(u) || /#!([\w-]{8})!([\w-]{43})/.exec(u);
   if (m) return { type: 'file', id: m[1], key: m[2] };
   m = /\/folder\/([\w-]{8})#([\w-]{22})(?:\/(file|folder)\/([\w-]{8}))?/.exec(u);
@@ -68,6 +69,15 @@ function parseLink(url) {
   if (m) return { type: 'folder', id: m[1], key: m[2], sub: m[3] || null };
   return null;
 }
+
+// Why a MEGA link can't be read.
+const noKey = url =>
+  new HostError(
+    /#P!/.test(String(url))
+      ? "MEGA: this link has a password, which Hakobu can't open yet. Ask for the plain link"
+      : 'MEGA: this link has no decryption key (the part after #). Copy the whole link',
+    { permanent: true }
+  );
 
 let seq = Math.floor(Math.random() * 1e9);
 async function api(ctx, cmds, folderId) {
@@ -155,7 +165,7 @@ async function crawl(url, ctx) {
 
 async function resolve(url, ctx) {
   const l = parseLink(url);
-  if (!l) throw new HostError('MEGA: this link has no decryption key (the part after #)', { permanent: true });
+  if (!l) throw noKey(url);
   let r, raw, name;
   if (l.type === 'file') {
     raw = b64url(l.key);
@@ -185,7 +195,7 @@ async function resolve(url, ctx) {
 
 async function check(url, ctx) {
   const l = parseLink(url);
-  if (!l) return { status: 'offline', error: 'No decryption key in this MEGA link' };
+  if (!l) return { status: 'offline', error: noKey(url).message };
   if (l.type === 'file') {
     const r = await api(ctx, [{ a: 'g', p: l.id }]);
     return { status: 'online', filename: decryptAttrs(r.at, fileKey(b64url(l.key)).key).n, size: r.s };
@@ -203,6 +213,7 @@ module.exports = {
   test: hostIn('mega.nz', 'mega.co.nz', 'mega.io'),
   free: true,
   maxDownloads: 2,
+  noBrowser: true,
   isFolder: url => parseLink(url)?.type === 'folder',
   resolve,
   check,

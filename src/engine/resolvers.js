@@ -1,6 +1,6 @@
 // Built-in host modules (JDownloader's "host plugins"): turn a file host's page link into a direct link for the HTTP
 // engine, list folder links, and use premium accounts where the host has an API.
-// Each module: { id, name, test(host), free, account?, maxDownloads?, maxConnections?, resolve(url, ctx),
+// Each module: { id, name, test(host), free, account?, maxDownloads?, maxConnections?, noBrowser?, resolve(url, ctx),
 //                check?(url, ctx), crawl?(url, ctx), isFolder?(url), accountInfo?(account, ctx) }
 // ctx = { signal, route, account }
 const { hostOf } = require('./hosters');

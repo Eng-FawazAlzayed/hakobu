@@ -13,7 +13,7 @@ const { infoHashFromMagnet, isHoster } = require('../linkparse');
 const { sanitize, safeJoin } = require('../util');
 const { extractAll, isFirstVolume } = require('./extract');
 const { HosterRegistry, hostOf } = require('./hosters');
-const { resolverFor, setAccounts } = require('./resolvers');
+const { resolverFor, moduleFor, setAccounts } = require('./resolvers');
 const { HostError } = require('./errors');
 const net = require('./net');
 const { hashFile, normalizeHash, expectedFromHashFiles } = require('./verify');
@@ -210,6 +210,8 @@ class Manager extends EventEmitter {
     const providers = this.hosters.providersFor(url);
     if (!providers.length) return resolverFor(url) ? null : 'None of your debrid services support this host.';
     const names = providers.map(p => (p.provider === 'torbox' ? 'TorBox' : 'Real-Debrid'));
+    const has = { torbox: this.settings.torboxKey, realdebrid: this.settings.realdebridToken };
+    if (providers.some(p => has[p.provider])) return `This host works through ${names.join(' or ')}. Pick it under "Download via".`;
     return `This host works through ${names.join(' or ')}. Add the API key in Settings → Debrid, or pick it under "Download via".`;
   }
 
@@ -409,7 +411,7 @@ class Manager extends EventEmitter {
         if (it.fallbackFrom) e.message = `${e.message} (${this.providerName(it.fallbackFrom)} failed first: ${it.fallbackReason})`;
         this.fail(it, e);
         // A file host's page (wait timer, captcha, "click to download"): a person has to do that part in the browser.
-        if ((e instanceof PageError || (e instanceof HostError && e.browser)) && /^https?:/i.test(it.source)) {
+        if ((e instanceof PageError || (e instanceof HostError && e.browser)) && /^https?:/i.test(it.source) && !moduleFor(it.source)?.noBrowser) {
           it.needsBrowser = true;
           it.pageUrl = it.pageUrl || it.source;
           this.emit('needsBrowser', it);
@@ -796,19 +798,21 @@ class Manager extends EventEmitter {
     return it.pageUrl;
   }
 
-  // The waiting item a browser download belongs to: same page first, else the newest one opened on that host.
-  matchBrowserWait(referrer) {
-    const host = u => {
+  // The waiting item a browser download belongs to: same page first, else the newest one opened on that site.
+  // Hosts often serve the file from a sub-domain, and some downloads carry no referrer, so the file's own URL counts too.
+  matchBrowserWait(referrer, url) {
+    const site = u => {
       try {
-        return new URL(u).hostname.replace(/^www\./, '');
+        const parts = new URL(u).hostname.split('.');
+        return parts.slice(/^(co|com|net|org)$/.test(parts[parts.length - 2]) && parts[parts.length - 1].length === 2 ? -3 : -2).join('.');
       } catch {
         return '';
       }
     };
     const page = u => String(u || '').replace(/#.*$/, '').replace(/\/+$/, '');
-    const h = host(referrer);
-    if (!h) return null;
-    const waiting = [...this.items.values()].filter(i => i.needsBrowser && i.status === 'browser' && host(i.pageUrl) === h);
+    const sites = [site(referrer), site(url)].filter(Boolean);
+    if (!sites.length) return null;
+    const waiting = [...this.items.values()].filter(i => i.needsBrowser && i.status === 'browser' && sites.includes(site(i.pageUrl)));
     return waiting.find(i => page(i.pageUrl) === page(referrer)) || waiting.sort((a, b) => b.browserOpenedAt - a.browserOpenedAt)[0] || null;
   }
 

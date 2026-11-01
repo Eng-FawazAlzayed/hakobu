@@ -89,7 +89,7 @@ class LocalApi {
     if (req.method === 'GET' && url.pathname === '/api/ping') return send(res, 200, { app: 'Hakobu', version: this.version });
     if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, this.getState?.() || {});
     // The extension asks before taking over a browser download it would otherwise leave alone.
-    if (req.method === 'GET' && url.pathname === '/api/expecting') return send(res, 200, { expecting: !!this.expecting(url.searchParams.get('referrer') || '') });
+    if (req.method === 'GET' && url.pathname === '/api/expecting') return send(res, 200, { expecting: !!this.expecting(url.searchParams.get('referrer') || '', url.searchParams.get('url') || '') });
     if (req.method === 'POST' && url.pathname === '/api/add') {
       let body;
       try {

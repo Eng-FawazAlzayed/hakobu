@@ -22,6 +22,7 @@ const gdrive = require('../src/engine/hosts/gdrive.js');
 const mediafire = require('../src/engine/hosts/mediafire.js');
 const onefichier = require('../src/engine/hosts/onefichier.js');
 const { resolverFor, setAccounts, isFolderLink } = require('../src/engine/resolvers.js');
+const { TorBox } = require('../src/debrid/torbox.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-special-'));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -432,6 +433,95 @@ const newManager = (settings = {}) => {
   assert.equal(onefichier._test.canonical('https://1fichier.com/?abcde12345&af=1'), 'https://1fichier.com/?abcde12345');
   assert.equal(onefichier._test.directLink('<a href="https://a-7.1fichier.com/p123" style="float:none;" class="ok btn-general btn-orange">Click here</a>'), 'https://a-7.1fichier.com/p123');
   ok('Google Drive warning page + folder view, MediaFire button (plain + scrambled), 1fichier wait + link parsed');
+}
+
+// ---- 11b. MEGA is never sent to the browser; link forms ----
+{
+  const p = mega._test.parseLink;
+  const key = 'r0d0-WRnFwulR_shhuEDwrY1Vo103-am1MyUy8oV6Ps';
+  for (const u of [`https://mega.nz/file/hYVmXKqL#${key}`, `https://mega.nz/#!hYVmXKqL!${key}`, `https://mega.co.nz/#!hYVmXKqL!${key}`, `https://mega.nz/file/hYVmXKqL%23${key}`]) assert.equal(p(u)?.id, 'hYVmXKqL', u);
+  assert.equal(p('https://mega.nz/folder/AAAAAAAA#BBBBBBBBBBBBBBBBBBBBBB/file/CCCCCCCC').type, 'node');
+  assert.equal(p('https://mega.nz/file/hYVmXKqL'), null);
+  await assert.rejects(mega.resolve('https://mega.nz/file/hYVmXKqL', {}), e => e.permanent && /no decryption key/.test(e.message));
+  await assert.rejects(mega.resolve('https://mega.nz/#P!AgAAAA', {}), e => e.permanent && /password/.test(e.message));
+  const m = newManager();
+  const [a] = m.add([{ kind: 'http', source: 'https://mega.nz/file/hYVmXKqL', via: 'direct' }]);
+  await until(() => a.status === 'error');
+  assert.ok(!a.needsBrowser, 'no browser hand-off for MEGA');
+  assert.match(a.error, /no decryption key/);
+  // Browser hand-off for other hosts: the file on a sub-domain, or no referrer at all.
+  const w = { id: 'w', needsBrowser: true, status: 'browser', pageUrl: 'https://megaup.net/abc/file', browserOpenedAt: 1 };
+  m.items.set('w', w);
+  assert.equal(m.matchBrowserWait('https://download.megaup.net/x', 'https://cdn.other.example/f.zip'), w);
+  assert.equal(m.matchBrowserWait('', 'https://d3.megaup.net/f.zip'), w);
+  assert.equal(m.matchBrowserWait('https://example.com/', 'https://example.com/f.zip'), null);
+  m.items.delete('w');
+  ok('MEGA link forms; a bad MEGA link is a clear error, never "Needs browser"; hand-off matches sub-domains and missing referrers');
+}
+
+// ---- 11c. TorBox: slow or dropped answers, queued and vanished downloads ----
+{
+  const real = globalThis.fetch;
+  const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
+  const tb = () => Object.assign(new TorBox('k'), { pollMs: 1, retryMs: 1 });
+  const file = { id: 7, short_name: 'x.zip', size: 5 };
+  let calls;
+  const serve = fn => {
+    calls = [];
+    globalThis.fetch = async (u, o) => {
+      calls.push({ u: String(u), o });
+      return fn(String(u), calls.length, o);
+    };
+  };
+  try {
+    // The link goes as a form, polls survive dropped connections, the file link comes back.
+    let polls = 0;
+    serve(u => {
+      if (u.includes('createwebdownload')) return json({ success: true, data: { webdownload_id: 3 } });
+      if (u.includes('mylist')) {
+        if (++polls <= 3) throw new TypeError('fetch failed');
+        return json({ success: true, data: { download_finished: true, files: [file] } });
+      }
+      return json({ success: true, data: 'https://cdn.example/x.zip' });
+    });
+    const got = await tb().resolveLink('https://host.example/f');
+    assert.equal(got[0].url, 'https://cdn.example/x.zip');
+    assert.ok(calls[0].o.body instanceof URLSearchParams);
+    assert.equal(calls[0].o.body.get('link'), 'https://host.example/f');
+    // Network down while submitting: tried again, then a message that says so.
+    serve(() => {
+      throw new TypeError('fetch failed');
+    });
+    await assert.rejects(tb().resolveLink('https://host.example/f'), /Couldn't reach TorBox/);
+    assert.equal(calls.length, 2);
+    // A request that never answers ends at the time limit.
+    globalThis.fetch = (u, o) => new Promise((_, no) => o.signal.addEventListener('abort', () => no(o.signal.reason)));
+    await assert.rejects(tb().call('POST', '/webdl/createwebdownload', { urlencoded: { link: 'x' }, timeoutMs: 30 }), /didn't answer within/);
+    // TorBox's own refusal is quoted and not retried.
+    serve(() => json({ success: false, error: 'BAD_TOKEN', detail: 'Your token is invalid.' }, 401));
+    await assert.rejects(tb().resolveLink('https://host.example/f'), /Your token is invalid\. \(BAD_TOKEN, HTTP 401\)/);
+    assert.equal(calls.length, 1);
+    // Queued because of a plan limit: no id to follow.
+    serve(() => json({ success: true, detail: 'Active limit reached.', data: { queued_id: 9 } }));
+    await assert.rejects(tb().resolveLink('https://host.example/f'), /queue.*Active limit reached/);
+    // A download TorBox doesn't list used to be polled forever.
+    serve(u => (u.includes('createwebdownload') ? json({ success: true, data: { webdownload_id: 3 } }) : json({ success: true, data: null })));
+    await assert.rejects(tb().resolveLink('https://host.example/f'), /no longer lists/);
+    // Stuck at the same state.
+    serve(u => (u.includes('createwebdownload') ? json({ success: true, data: { webdownload_id: 3 } }) : json({ success: true, data: { download_state: 'downloading', progress: 0.1 } })));
+    await assert.rejects(Object.assign(tb(), { stallMs: 20 }).resolveLink('https://host.example/f'), /no progress/);
+    // A MEGA link TorBox can't do falls back to the built-in module, not to the browser.
+    serve(() => json({ success: false, error: 'BAD_TOKEN', detail: 'Your token is invalid.' }, 401));
+    const m = newManager({ torboxKey: 'bad' });
+    const [a] = m.add([{ kind: 'http', source: 'https://mega.nz/file/hYVmXKqL', via: 'torbox' }]);
+    await until(() => a.status === 'error');
+    assert.equal(a.fallbackFrom, 'torbox');
+    assert.ok(!a.needsBrowser);
+    assert.match(a.error, /no decryption key.*TorBox failed first: .*invalid/);
+  } finally {
+    globalThis.fetch = real;
+  }
+  ok('TorBox: survives dropped polls, submit limit, specific errors (refused, queued, vanished, stalled); MEGA falls back to the built-in module');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----
