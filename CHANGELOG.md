@@ -27,6 +27,7 @@ Plugin sources, stability fixes, and JDownloader-style handling of file hosts an
 - Detail pages can list a title's files (game, updates, DLC) with a tick box and a file-host picker each, plus "Host for all"; the last host picked is remembered per source, and the picks go to LinkGrabber.
 - Search inside a plugin source: type in the filter box on its first page and press Enter.
 - Plugin sources can hand file-host links to LinkGrabber instead of a torrent (one package per pick).
+- Plugin sources sit at the top of the sidebar, under their own Plugins heading.
 - Plugin manager in Settings: install a plugin file (or drop it onto the window), switch plugins on and off, remove them (they go to the Recycle Bin), with each plugin's description and version. A share button saves any installed plugin as a .hakobu-plugin file.
 - .hakobu-plugin files: double-click one (or drop it on the window) to install that plugin after a confirm prompt.
 

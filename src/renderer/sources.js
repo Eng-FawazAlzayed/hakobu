@@ -19,7 +19,8 @@ async function loadSources() {
   } catch {
     srcCatalog = [];
   }
-  $('#srcFilters').innerHTML = srcCatalog
+  // First in the list: below the library filters they sat out of sight on most window sizes.
+  $('#srcFilters').innerHTML = (srcCatalog.length ? '<div class="label">Plugins</div>' : '') + srcCatalog
     .map(s => `<button data-source="${esc(s.id)}" title="${esc(s.title)}">${svgIcon(s.icon, 'archive')}<span>${esc(s.title)}</span><b></b></button>`)
     .join('');
   requestAnimationFrame(() => moveIndicator('#filters'));
