@@ -257,7 +257,7 @@
           <h3><svg data-icon="refresh"></svg>Host special cases</h3>
           <p class="hint">How Hakobu deals with file hosts the way JDownloader does: waits the host asks for, retries, damaged files, files already on disk.</p>
           <div class="row2">
-            <label class="field"><span>Retries on connection problems <em>after 1, 5, 15 min</em></span><input type="number" name="autoRetries" min="0" max="10" /></label>
+            <label class="field"><span>Connection retries <em>after 1, 5, 15 min</em></span><input type="number" name="autoRetries" min="0" max="10" /></label>
             <label class="field"><span>File already in the folder</span>
               <select name="fileExists"><option value="rename">Keep both (name (1).ext)</option><option value="skip">Skip it if it's the same size</option><option value="overwrite">Overwrite it</option></select></label>
           </div>
@@ -272,7 +272,8 @@
           <h3><svg data-icon="globe"></svg>Proxies</h3>
           <p class="hint">HTTP or SOCKS proxies for file hosts. "Always" carries that traffic; "Only to skip waits" is used when a host limits your IP (daily quota, "wait 30 minutes"), so the download moves on instead of waiting. Leave hosts empty for all hosts. Torrents don't use these.</p>
           <div class="mini-list" id="proxyList"></div>
-          <div class="hrow"><input id="pxUrl" placeholder="socks5://user:pass@host:1080 or http://host:8080" /><input id="pxHosts" placeholder="hosts (optional)" style="max-width:160px" />
+          <div class="hrow"><input id="pxUrl" placeholder="socks5://user:pass@host:1080 or http://host:8080" /></div>
+          <div class="hrow" style="margin-top:6px"><input id="pxHosts" placeholder="hosts, e.g. mega.nz (empty = all)" />
             <select id="pxMode" style="max-width:170px"><option value="always">Always</option><option value="rotate">Only to skip waits</option></select><button type="button" class="btn ghost sq" id="pxAdd"><svg data-icon="plus"></svg></button></div>
         </div>
         <div class="card">

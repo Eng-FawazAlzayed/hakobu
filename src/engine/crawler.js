@@ -24,7 +24,7 @@ const isProtector = url => {
 // ---- paste sites: fetch the raw text, pull the links out ----
 const PASTES = [
   { test: /^(?:www\.)?pastebin\.com$/, raw: u => `https://pastebin.com/raw/${/pastebin\.com\/(?:raw\/)?(\w+)/.exec(u)?.[1]}` },
-  { test: /^(?:www\.)?rentry\.(?:co|org)$/, raw: u => `https://rentry.co/${/rentry\.\w+\/([\w-]+)/.exec(u)?.[1]}/raw` },
+  { test: /^(?:www\.)?rentry\.(?:co|org)$/, raw: null }, // its /raw view now needs an access code
   { test: /^(?:www\.)?pastes\.io$/, raw: u => `https://pastes.io/raw/${/pastes\.io\/(?:raw\/)?([\w-]+)/.exec(u)?.[1]}` },
   { test: /^(?:www\.)?paste\.ee$/, raw: u => `https://paste.ee/r/${/paste\.ee\/[pr]\/(\w+)/.exec(u)?.[1]}` },
   { test: /^(?:www\.)?controlc\.com$/, raw: null }, // HTML page: links are read from it
@@ -34,6 +34,18 @@ const pasteFor = url => {
   const h = hostOf(url);
   return h ? PASTES.find(p => p.test.test(h)) : null;
 };
+
+// A paste shown as a web page: only its content area (not the site's menus), with link targets kept as text.
+function pasteText(html) {
+  const s = String(html);
+  const part =
+    /<div[^>]+class="[^"]*entry-text[^"]*"[^>]*>([\s\S]*?)<\/article>/i.exec(s)?.[1] ||
+    /<article[^>]*>([\s\S]*?)<\/article>/i.exec(s)?.[1] ||
+    /<body[^>]*>([\s\S]*)<\/body>/i.exec(s)?.[1] ||
+    s;
+  const body = part.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<a\s[^>]*href="(https?:\/\/[^"]+)"[^>]*>/gi, ' $1 ');
+  return decodeHtml(body.replace(/<[^>]+>/g, ' '));
+}
 
 // ---- DLC containers ----
 // The container's last 88 characters are its key, which JDownloader's service turns into the AES key for the rest.
@@ -154,9 +166,12 @@ async function crawl(url, { headers = {}, signal, route = 0 } = {}) {
     const res = await netFetch(raw, { headers: { 'User-Agent': UA }, signal: sig, route });
     if (res.status === 404) throw new Error('Paste not found');
     let text = await res.text();
-    if (!paste.raw) text = decodeHtml(text.replace(/<[^>]+>/g, ' '));
+    if (!paste.raw || /text\/html/i.test(res.headers.get('content-type') || '')) text = pasteText(text);
     const { parseLinks } = require('../linkparse');
-    const links = parseLinks(text).filter(e => e.source !== url).map(e => ({ source: e.source, name: e.name }));
+    const own = hostOf(url);
+    const links = parseLinks(text)
+      .filter(e => e.source !== url && hostOf(e.source) !== own) // the paste site's own pages aren't part of the paste
+      .map(e => ({ source: e.source, name: e.name }));
     return { package: `Paste ${hostOf(url)}`, links };
   }
   const mod = moduleFor(url);
@@ -164,4 +179,4 @@ async function crawl(url, { headers = {}, signal, route = 0 } = {}) {
   return null;
 }
 
-module.exports = { crawl, isCrawlable, isProtector, isDlcUrl, decryptDlc, parseDlcXml, parseIndex, PROTECTORS, _test: { encryptDlcForTest, rcForKey, fetchDlcKey } };
+module.exports = { crawl, isCrawlable, isProtector, isDlcUrl, decryptDlc, parseDlcXml, parseIndex, PROTECTORS, _test: { pasteText, encryptDlcForTest, rcForKey, fetchDlcKey } };

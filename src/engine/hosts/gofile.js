@@ -46,7 +46,8 @@ async function contents(code, ctx) {
   });
   if (data?.status === 'error-notFound' || res.status === 404) throw gone('Gofile');
   if (data?.status === 'error-passwordRequired') throw new HostError('Gofile: this folder has a password; open it in your browser', { browser: true });
-  if (data?.status === 'error-notPremium') throw new HostError('Gofile wants a premium account for this folder', { browser: true });
+  // Also what guests get when Gofile's website check changes: the browser (or a premium token) still works.
+  if (data?.status === 'error-notPremium') throw new HostError('Gofile only lists folders for its website or premium accounts: open it in your browser, or add your premium token in Settings → Host accounts', { browser: true });
   if (data?.status !== 'ok') throw new HostError(`Gofile refused the listing (${data?.status || 'HTTP ' + res.status})`, { browser: true });
   return { tok, folder: data.data };
 }

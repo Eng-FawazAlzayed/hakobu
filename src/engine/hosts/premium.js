@@ -1,13 +1,17 @@
 // Premium accounts for hosts whose free mode needs captchas (so only an account helps): Rapidgator, Nitroflare, Keep2Share.
 const { getJson, hostIn, HostError, gone } = require('./common');
 
+// A refused login isn't retried (retries can lock the account): the user fixes it in Settings → Host accounts.
+const loginError = (host, msg) =>
+  new HostError(`${host} login failed: ${String(msg).replace(/^(Error:\s*)+/i, '')} (check Settings → Host accounts; if it asks for a captcha, log in on the website once)`, { permanent: true });
+
 // ---- Rapidgator (API v2) ----
 const rgTokens = new Map(); // login -> token
 async function rgLogin(account, ctx, fresh = false) {
   if (!fresh && rgTokens.has(account.login)) return rgTokens.get(account.login);
   const q = new URLSearchParams({ login: account.login, password: account.password });
   const { data } = await getJson(ctx, `https://rapidgator.net/api/v2/user/login?${q}`);
-  if (data?.status !== 200 || !data.response?.token) throw new Error(data?.details || 'Rapidgator login failed');
+  if (data?.status !== 200 || !data.response?.token) throw loginError('Rapidgator', data?.details || 'no token');
   rgTokens.set(account.login, data.response.token);
   return data.response;
 }
@@ -57,12 +61,13 @@ const nitroflare = {
     if (data?.type === 'success' && data.result?.url) return { url: data.result.url, headers: {}, filename: data.result.name, size: Number(data.result.size) || null };
     const msg = data?.message || 'no link';
     if (/not exist|not found|deleted/i.test(msg)) throw gone('Nitroflare');
+    if (/captcha|premium key|wrong|invalid|user/i.test(msg)) throw loginError('Nitroflare', msg);
     throw new Error(`Nitroflare: ${msg}`);
   },
   async accountInfo(account, ctx) {
     const q = new URLSearchParams({ user: account.user, premiumKey: account.premiumKey });
     const { data } = await getJson(ctx, `https://nitroflare.com/api/v2/getKeyInfo?${q}`);
-    if (data?.type !== 'success') throw new Error(data?.message || 'Wrong key');
+    if (data?.type !== 'success') throw loginError('Nitroflare', data?.message || 'wrong key');
     return { user: account.user, premium: data.result?.status === 'active', expires: data.result?.expiryDate || null, trafficLeft: Number(data.result?.trafficLeft) || null };
   },
 };
@@ -74,7 +79,7 @@ const k2sCall = (ctx, method, body) =>
 async function k2sLogin(account, ctx, fresh) {
   if (!fresh && k2sTokens.has(account.login)) return k2sTokens.get(account.login);
   const d = await k2sCall(ctx, 'login', { username: account.login, password: account.password });
-  if (d.status !== 'success' || !d.auth_token) throw new Error(d.message || 'Keep2Share login failed (it may want a captcha: log in on the website once)');
+  if (d.status !== 'success' || !d.auth_token) throw loginError('Keep2Share', d.message || 'no token');
   k2sTokens.set(account.login, d.auth_token);
   return d.auth_token;
 }

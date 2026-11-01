@@ -124,6 +124,8 @@ async function checkLinks(urls, opts = {}, concurrency = 6) {
         const i = next++;
         const u = typeof urls[i] === 'string' ? { url: urls[i] } : urls[i] || {};
         const r = await checkLink(u.url, { ...opts, headers: u.headers || {} }).catch(e => ({ status: 'unknown', error: e.message }));
+        // Node's bare network error says nothing useful.
+        if (r.error === 'fetch failed') r.error = "Couldn't connect to the host (network problem); check again later";
         out[i] = { ...r, autoPackage: r.filename ? packageName(r.filename) : null };
       }
     })

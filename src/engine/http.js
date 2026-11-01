@@ -57,7 +57,14 @@ function filenameFromResponse(res, url) {
 class PageError extends Error {}
 
 async function probe(url, headers, signal, route = 0) {
-  const res = await netFetch(url, { headers: { 'User-Agent': UA, ...headers, Range: 'bytes=0-0' }, signal, route });
+  let res = await netFetch(url, { headers: { 'User-Agent': UA, ...headers, Range: 'bytes=0-0' }, signal, route });
+  if (res.status === 416) {
+    // An empty file has no byte 0: ask again without a range.
+    try {
+      await res.body?.cancel();
+    } catch {}
+    res = await netFetch(url, { headers: { 'User-Agent': UA, ...headers }, signal, route });
+  }
   const type = res.headers.get('content-type') || '';
   if (res.ok && /text\/html|application\/xhtml/i.test(type) && !/\.x?html?$/i.test(new URL(res.url || url).pathname)) {
     try {

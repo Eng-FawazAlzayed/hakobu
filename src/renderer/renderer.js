@@ -778,10 +778,8 @@ async function checkMedia(list) {
 
 // JDownloader-style online check: status, real file name, size, and a better package name.
 async function checkGrabbed(list) {
-  const results = await api.checkLinks(list.map(g => ({ url: g.source, headers: g.headers || undefined })));
   const folders = [];
-  list.forEach((g, i) => {
-    const r = results[i] || { status: 'unknown' };
+  const apply = (g, r) => {
     if (r.status === 'folder') return folders.push([g, r]);
     g.check = r;
     if (r.filename) {
@@ -793,7 +791,14 @@ async function checkGrabbed(list) {
     // The main process knows which services support the host: use its route unless the user picked one.
     if (g.viaAuto && r.route && g.kind !== 'torrent') g.via = r.route;
     if (['offline', 'page', 'unsupported', 'protected'].includes(r.status)) g.sel = false;
-  });
+  };
+  // In batches, so a big folder shows its results as they come instead of all at the end.
+  for (let i = 0; i < list.length; i += 24) {
+    const part = list.slice(i, i + 24);
+    const got = await api.checkLinks(part.map(g => ({ url: g.source, headers: g.headers || undefined })));
+    part.forEach((g, j) => apply(g, got[j] || { status: 'unknown' }));
+    if (i + 24 < list.length) renderGrab();
+  }
   // Folder links, DLC containers and pastes are swapped for the links inside them (one package each).
   for (const [g, r] of folders) {
     grab.splice(grab.indexOf(g), 1);

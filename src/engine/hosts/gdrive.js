@@ -8,6 +8,13 @@ const fileId = url => {
 };
 const folderId = url => /\/(?:drive\/(?:u\/\d+\/)?folders|folderview\?id=|embeddedfolderview\?id=)\/?([\w-]{10,})/.exec(String(url))?.[1] || null;
 const isFolderUrl = url => /\/folders\/|folderview\?id=/.test(String(url));
+// Google Docs, Sheets and Slides have no file to download: they're exported as Office files.
+const EXPORTS = { document: 'docx', spreadsheets: 'xlsx', presentation: 'pptx' };
+const docOf = url => {
+  const m = /docs\.google\.com\/(document|spreadsheets|presentation)\/(?:u\/\d+\/)?d\/([\w-]{10,})/.exec(String(url));
+  return m ? { kind: m[1], id: m[2], format: EXPORTS[m[1]] } : null;
+};
+const withExt = (name, ext) => (name.toLowerCase().endsWith('.' + ext) ? name : `${name}.${ext}`);
 
 // The warning page's form: <form id="download-form" action="..."> with hidden inputs.
 function confirmUrl(html) {
@@ -33,13 +40,25 @@ function pageError(html) {
   return null;
 }
 
+async function exportDoc(doc, ctx) {
+  const url = `https://docs.google.com/${doc.kind}/d/${doc.id}/export?format=${doc.format}`;
+  const res = await require('./common').fetcher(ctx)(url, { headers: { Range: 'bytes=0-0' } });
+  await res.body?.cancel().catch(() => {});
+  if (res.status === 404) throw gone('Google Docs');
+  if (/text\/html/i.test(res.headers.get('content-type') || '')) throw new HostError("Google Docs: this document isn't shared publicly", { browser: true });
+  return { url, headers: {} };
+}
+
 async function resolve(url, ctx) {
+  const doc = docOf(url);
+  if (doc) return exportDoc(doc, ctx);
   const id = fileId(url);
   if (!id || isFolderUrl(url)) throw new HostError('Google Drive: this is a folder link; add it to LinkGrabber to see its files', { permanent: true });
   const first = `https://drive.usercontent.google.com/download?id=${id}&export=download`;
   const res = await require('./common').fetcher(ctx)(first, { headers: { Range: 'bytes=0-0' } });
   const type = res.headers.get('content-type') || '';
-  if (!/text\/html/i.test(type)) {
+  if (!/text\/html/i.test(type) || res.status === 416) {
+    // 416: an empty file (no byte 0 to send); it downloads like any other.
     await res.body?.cancel().catch(() => {});
     if (res.status === 404) throw gone('Google Drive');
     return { url: first, headers: {} };
@@ -59,7 +78,7 @@ function parseFolder(html) {
   const folders = [];
   for (const m of html.matchAll(/<div class="flip-entry" id="entry-([\w-]+)"[\s\S]*?<a href="([^"]+)"[\s\S]*?<div class="flip-entry-title">([^<]*)<\/div>/g)) {
     const [, id, href, name] = m;
-    (/\/folders\//.test(href) ? folders : files).push({ id, name: decodeHtml(name).trim() });
+    (/\/folders\//.test(href) ? folders : files).push({ id, name: decodeHtml(name).trim(), doc: docOf(decodeHtml(href)) });
   }
   return { title, files, folders };
 }
@@ -76,7 +95,14 @@ async function crawl(url, ctx) {
     if (err && !depth) throw err;
     const f = parseFolder(text);
     top = top ?? (f.title || 'Google Drive folder');
-    for (const file of f.files) links.push({ source: `https://drive.google.com/file/d/${file.id}/view`, name: file.name, subfolder: sub });
+    for (const file of f.files) {
+      const d = file.doc;
+      links.push(
+        d
+          ? { source: `https://docs.google.com/${d.kind}/d/${d.id}/edit`, name: withExt(file.name, d.format), subfolder: sub }
+          : { source: `https://drive.google.com/file/d/${file.id}/view`, name: file.name, subfolder: sub },
+      );
+    }
     if (depth < 6) for (const d of f.folders) await walk(d.id, [sub, d.name].filter(Boolean).join('/'), depth + 1);
   };
   await walk(root, '', 0);
@@ -91,5 +117,5 @@ module.exports = {
   isFolder: url => !!folderId(url),
   resolve,
   crawl,
-  _test: { confirmUrl, parseFolder, fileId, folderId, pageError },
+  _test: { confirmUrl, parseFolder, fileId, folderId, pageError, docOf },
 };

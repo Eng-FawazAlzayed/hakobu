@@ -146,7 +146,9 @@ const newManager = (settings = {}) => {
 {
   handlers['slow.bin'] = (req, res) => {
     const start = +(/bytes=(\d+)/.exec(req.headers.range || 'bytes=0')[1]);
-    serveRange(req, res, payload, { delay: start === 0 ? 1 : 25 }); // the first half is fast, the rest crawls
+    // The first half arrives at once, the rest crawls. (A 1 ms timer ticks every ~15 ms on Windows, which made the
+    // "fast" half slow enough that the other one dropped below the split threshold.)
+    serveRange(req, res, payload, { delay: start === 0 ? 0 : 25 });
   };
   const it = { source: `${base}/slow.bin`, dir: path.join(tmp, 'split') };
   await new HttpTask(it, { limiter, connections: 2, taken: new Set() }).run();
@@ -188,7 +190,19 @@ const newManager = (settings = {}) => {
   const ren = { source: `${base}/c.bin`, dir };
   await new HttpTask(ren, { limiter, taken: new Set(), exists: 'rename' }).run();
   assert.equal(ren.filename, 'c (1).bin');
-  ok('not enough disk space → wait and retry; file exists → skip (same size) / overwrite / keep both');
+  // An empty file can't send byte 0 (Google Drive answers 416 to the range probe): it still downloads.
+  handlers['empty.txt'] = (req, res) => {
+    if (req.headers.range) {
+      res.writeHead(416, { 'content-type': 'text/html', 'content-range': 'bytes */0' });
+      return res.end('<html>416</html>');
+    }
+    res.writeHead(200, { 'content-type': 'text/plain', 'content-length': 0 });
+    res.end();
+  };
+  const empty = { source: `${base}/empty.txt`, dir: path.join(tmp, 'empty') };
+  await new HttpTask(empty, { limiter, taken: new Set() }).run();
+  assert.equal(fs.statSync(path.join(empty.dir, empty.filename)).size, 0);
+  ok('not enough disk space → wait and retry; file exists → skip (same size) / overwrite / keep both; empty files download');
 }
 
 // ---- 6. hash checks: .md5 in the package, a damaged file is downloaded again once ----
@@ -367,7 +381,12 @@ const newManager = (settings = {}) => {
   assert.ok(isFolderLink('https://pixeldrain.com/l/AbC123'));
   assert.ok(isFolderLink('https://www.mediafire.com/folder/abc123def/Stuff'));
   assert.ok(!isFolderLink('https://mega.nz/file/AbCdEfGh#' + 'A'.repeat(43)));
-  ok('DLC container decrypts to its links + package; "Index of" pages list their files; filecrypt = protected; folder links recognised');
+  // A paste page (rentry's layout): only the entry's links, with hrefs kept, not the site menu or scripts.
+  const pasteHtml = '<nav><a href="https://twitter.com/site">x</a></nav><div class="entry-text"><article><p>Part 1: <a href="https://example.com/a.rar">mirror</a></p><script>var u="https://evil.example/x"</script></article></div>';
+  const pt = crawler._test.pasteText(pasteHtml);
+  assert.match(pt, /https:\/\/example\.com\/a\.rar/);
+  assert.doesNotMatch(pt, /twitter|evil/);
+  ok('DLC container decrypts to its links + package; "Index of" pages list their files; filecrypt = protected; folder links recognised; paste pages read from their content');
 }
 
 // ---- 11. host page parsers (what the live sites send) ----
@@ -378,8 +397,13 @@ const newManager = (settings = {}) => {
   const folder = '<title>My Folder - Google Drive</title><div class="flip-entry" id="entry-1FileAAAAAAAA" tabindex="0"><div class="flip-entry-info"><a href="https://drive.google.com/file/d/1FileAAAAAAAA/view?usp=drive_web" target="_blank"><div class="flip-entry-title">a.rar</div></a></div></div><div class="flip-entry" id="entry-1DirBBBBBBBBB"><a href="https://drive.google.com/drive/folders/1DirBBBBBBBBB"><div class="flip-entry-title">Sub</div></a></div>';
   const f = gdrive._test.parseFolder(folder);
   assert.equal(f.title, 'My Folder');
-  assert.deepEqual(f.files, [{ id: '1FileAAAAAAAA', name: 'a.rar' }]);
-  assert.deepEqual(f.folders, [{ id: '1DirBBBBBBBBB', name: 'Sub' }]);
+  assert.deepEqual(f.files, [{ id: '1FileAAAAAAAA', name: 'a.rar', doc: null }]);
+  assert.deepEqual(f.folders, [{ id: '1DirBBBBBBBBB', name: 'Sub', doc: null }]);
+  // Google Docs in a folder (as the live folder view lists them) are exported as Office files.
+  const docs = gdrive._test.parseFolder('<div class="flip-entry" id="entry-1DocCCCCCCCCC" tabindex="0" role="link"><div class="flip-entry-info"><a href="https://docs.google.com/document/d/1DocCCCCCCCCC/edit?usp=drive_web" target="_blank"><div class="flip-entry-title">notes</div></a></div></div>');
+  assert.deepEqual(docs.files[0].doc, { kind: 'document', id: '1DocCCCCCCCCC', format: 'docx' });
+  assert.equal(gdrive._test.docOf('https://docs.google.com/spreadsheets/d/1SheetDDDDDDD/edit#gid=0').format, 'xlsx');
+  assert.ok(isFolderLink('https://drive.google.com/drive/folders/1DirBBBBBBBBB') && !isFolderLink('https://docs.google.com/document/d/1DocCCCCCCCCC/edit'));
   assert.equal(gdrive._test.fileId('https://drive.google.com/file/d/1AbCdEfGhIjK/view?usp=sharing'), '1AbCdEfGhIjK');
   assert.equal(mediafire._test.linkFromPage('<a class="input popsok" aria-label="Download file" href="https://download2391.mediafire.com/abc/x.zip" id="downloadButton">'), 'https://download2391.mediafire.com/abc/x.zip');
   assert.equal(mediafire._test.linkFromPage(`<a id="downloadButton" data-scrambled-url="${Buffer.from('https://download1.mediafire.com/q/y.7z').toString('base64')}">`), 'https://download1.mediafire.com/q/y.7z');
