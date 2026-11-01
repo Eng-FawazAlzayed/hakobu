@@ -18,6 +18,7 @@ class TorBox {
     this.maxPollErrors = 10; // polls in a row that may fail before giving up
     this.maxMissing = 5; // polls in a row that may not find the download
     this.stallMs = 20 * 60000; // a web download with no progress for this long has failed
+    this.emptyFilesMs = 2 * 60000; // how long a finished download may list no files
   }
 
   // -> the whole answer: { success, error, detail, data }
@@ -123,6 +124,8 @@ class TorBox {
     let missing = 0;
     let seen = null;
     let movedAt = Date.now();
+    let emptySince = null;
+    let emptyPolls = 0;
     for (;;) {
       let item;
       try {
@@ -144,6 +147,14 @@ class TorBox {
       if (item.download_finished || item.download_present) {
         const out = [];
         let files = item.files || [];
+        // Finished but no files yet: TorBox can list them a little later, so give it a moment.
+        if (!files.length) {
+          emptySince = emptySince ?? Date.now();
+          if (Date.now() - emptySince >= this.emptyFilesMs) throw new Error("TorBox finished but listed no files; this host's folder links may not be supported");
+          emptyPolls++;
+          await sleep(this.pollMs * Math.min(emptyPolls, 5), signal);
+          continue;
+        }
         if (wanted) {
           const picked = files.filter(f => wanted.has(fileKey(f.short_name || f.name, f.size)));
           if (picked.length) files = picked;

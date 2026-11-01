@@ -516,6 +516,17 @@ const newManager = (settings = {}) => {
     // Stuck at the same state.
     serve(u => (u.includes('createwebdownload') ? json({ success: true, data: { webdownload_id: 3 } }) : json({ success: true, data: { download_state: 'downloading', progress: 0.1 } })));
     await assert.rejects(Object.assign(tb(), { stallMs: 20 }).resolveLink('https://host.example/f'), /no progress/);
+    // Finished with no files: TorBox gets a moment to list them, then a clear message.
+    let lists = 0;
+    serve(u => {
+      if (u.includes('createwebdownload')) return json({ success: true, data: { webdownload_id: 3 } });
+      if (u.includes('mylist')) return json({ success: true, data: { download_finished: true, files: ++lists < 3 ? [] : [file] } });
+      return json({ success: true, data: 'https://cdn.example/late.zip' });
+    });
+    assert.equal((await tb().resolveLink('https://host.example/f'))[0].url, 'https://cdn.example/late.zip');
+    assert.equal(lists, 3);
+    serve(u => (u.includes('createwebdownload') ? json({ success: true, data: { webdownload_id: 3 } }) : json({ success: true, data: { download_finished: true, files: [] } })));
+    await assert.rejects(Object.assign(tb(), { emptyFilesMs: 20 }).resolveLink('https://gofile.io/d/abc'), /finished but listed no files; this host's folder links may not be supported/);
     // A MEGA link TorBox can't do falls back to the built-in module, not to the browser.
     serve(() => json({ success: false, error: 'BAD_TOKEN', detail: 'Your token is invalid.' }, 401));
     const m = newManager({ torboxKey: 'bad' });
