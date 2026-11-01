@@ -65,6 +65,12 @@ async function probe(url, headers, signal, route = 0) {
     } catch {}
     res = await netFetch(url, { headers: { 'User-Agent': UA, ...headers }, signal, route });
   }
+  if (res.headers.get('cf-mitigated')) {
+    try {
+      await res.body?.cancel();
+    } catch {}
+    throw new PageError(`${new URL(url).hostname} shows a bot check`);
+  }
   const type = res.headers.get('content-type') || '';
   if (res.ok && /text\/html|application\/xhtml/i.test(type) && !/\.x?html?$/i.test(new URL(res.url || url).pathname)) {
     try {

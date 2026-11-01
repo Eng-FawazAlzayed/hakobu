@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   parse: text => ipcRenderer.invoke('parse', text),
   add: entries => ipcRenderer.invoke('add', entries),
   openInBrowser: ids => ipcRenderer.invoke('openInBrowser', ids),
+  openHostWindow: id => ipcRenderer.invoke('openHostWindow', id),
   action: (ids, action) => ipcRenderer.invoke('action', ids, action),
   pickFolder: () => ipcRenderer.invoke('pickFolder'),
   saveSettings: patch => ipcRenderer.invoke('saveSettings', patch),

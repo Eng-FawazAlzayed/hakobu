@@ -237,7 +237,7 @@ html.idle .src-tile, html.idle .src-tile .art { transition: none; }
 .sd-dl .hrow .muted { font-size: 12px; }
 
 /* "Needs browser": the globe button stays visible and stands out */
-.row.needs-browser .quick { width: 138px; opacity: 1; transform: none; }
+.row.needs-browser .quick { width: 176px; opacity: 1; transform: none; }
 .row.needs-browser .quick [data-q="browser"] { color: var(--accent); background: var(--accent-soft); }
 
 /* Host accounts (Settings) */

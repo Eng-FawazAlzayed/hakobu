@@ -591,13 +591,13 @@ const newManager = (settings = {}) => {
   } finally {
     globalThis.fetch = real;
   }
-  // Debrid keeps its place when it's set up; the built-in module works without it.
+  // Direct first: the built-in module comes before a configured service.
   const m = newManager({ torboxKey: 'k' });
   m.hosters.data.torbox = [{ name: 'DataNodes', domains: ['datanodes.to'], up: true }];
-  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'torbox');
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
   assert.equal(newManager().defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
   assert.ok(resolverFor('https://datanodes.to/abc/x.zip') && resolverFor('https://send.now/abc') && resolverFor('https://krakenfiles.com/view/a/file.html'));
-  ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; debrid is still used when set up');
+  ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; direct first');
 }
 
 // ---- 11e. media tools: dropped connections while checking versions and checksums ----
@@ -649,6 +649,66 @@ const newManager = (settings = {}) => {
     tools._test.setRetryMs(1500);
   }
   ok('media tools: version and checksum checks survive dropped connections; errors name the host and reason');
+}
+
+// ---- 11f. direct first, debrid before asking the person, and links a person got ----
+{
+  const providers = [{ provider: 'torbox', name: 'x', up: true }];
+  const m = newManager({ torboxKey: 'k' });
+  m.hosters.providersFor = () => providers;
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://mega.nz/file/abc#k' }), 'direct', 'a built-in module comes before debrid');
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://megaup.net/abc/x' }), 'torbox', 'no module: debrid');
+  // Auto route that needs a person: debrid first. A route the person picked is left alone.
+  const it = { id: 'a', via: 'direct', autoRoute: true, source: 'https://datanodes.to/a/x.zip', status: 'error' };
+  m.items.set('a', it);
+  m.schedule = () => {};
+  assert.equal(m.tryDebrid(it), true);
+  assert.equal(it.via, 'torbox');
+  assert.equal(m.tryDebrid({ via: 'direct', autoRoute: false, source: it.source }), false, 'picked by hand');
+  assert.equal(m.tryDebrid({ via: 'direct', autoRoute: true, fallbackFrom: 'torbox', source: it.source }), false, 'debrid already failed');
+  m.items.delete('a');
+  // A link a person got skips the host module; closing the window goes back to waiting.
+  const w = { id: 'w', needsBrowser: true, status: 'browser', pageUrl: 'https://x.example/f', source: 'https://x.example/f' };
+  m.items.set('w', w);
+  m.browserClosed('w');
+  assert.equal(w.status, 'error');
+  assert.match(w.error, /solve the captcha/);
+  w.status = 'browser';
+  m.browserHandoff('w', { source: 'https://a-1.1fichier.com/p1', headers: { Cookie: 'c=1' } });
+  assert.ok(w.handedOff && !w.needsBrowser);
+  assert.equal(w.headers.Cookie, 'c=1');
+  m.items.delete('w');
+  // A bot check on the file link is a page for a person, not a plain 403.
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<title>Just a moment...</title>', { status: 403, headers: { 'cf-mitigated': 'challenge', 'content-type': 'text/html' } });
+  const { probe, PageError } = require('../src/engine/http.js');
+  await assert.rejects(probe('https://download.megaup.net/?url=x', {}, AbortSignal.timeout(2000)), e => e instanceof PageError);
+  // A site with a solved session is fetched through it.
+  netLayer.configure([]);
+  let through = null;
+  netLayer.registerSiteFetch('solved.example', async u => {
+    through = u;
+    return new Response('ok');
+  });
+  await netLayer.netFetch('https://d1.solved.example/f');
+  assert.equal(through, 'https://d1.solved.example/f');
+  assert.equal(netLayer.siteOf('https://a.b.example.co.uk/x'), 'example.co.uk');
+  globalThis.fetch = real;
+  // XFileSharing: two forms, then the file.
+  let step = 0;
+  globalThis.fetch = async (u, o = {}) => {
+    if (!o.method) return new Response('<form><input type="hidden" name="op" value="download1"><input type="hidden" name="id" value="abc"></form>');
+    step++;
+    if (step === 1) return new Response('<form><input type="hidden" name="op" value="download2"><input type="hidden" name="rand" value="r"></form><script>var seconds = 0;</script>');
+    return new Response(null, { status: 302, headers: { location: 'https://s1.hexload.com/d/x.zip' } });
+  };
+  const x = simpleHosts.find(h => h.id === 'xfs');
+  assert.equal((await x.resolve('https://hexload.com/abc123', {})).url, 'https://s1.hexload.com/d/x.zip');
+  globalThis.fetch = async () => new Response('<form><input type="hidden" name="op" value="download1"></form><div class="g-recaptcha"></div>');
+  await assert.rejects(x.resolve('https://hexload.com/abc123', {}), e => e.browser);
+  globalThis.fetch = real;
+  assert.equal(simpleHosts._test.fileHref('<a href="https://s2.x.com/d/game.zip" class="btn">Download file</a>'), 'https://s2.x.com/d/game.zip');
+  ok('direct first, debrid before asking; person-got links skip modules; bot checks need a person; solved sessions reused; XFileSharing flow');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----

@@ -58,7 +58,7 @@ function view(it) {
     seeding: ['seeding', 'Seeding', 'seeding'],
     completed: ['completed', 'Completed', 'completed'],
     paused: ['paused', 'Paused', 'paused'],
-    error: ['error', it.needsBrowser ? 'Needs browser' : 'Error', 'error'],
+    error: ['error', it.needsBrowser ? 'Waiting for you' : 'Error', 'error'],
     retrying: ['downloading', 'Retrying soon', 'paused'],
     waiting: ['downloading', `Waiting ${duration(Math.max(0, ((it.waitUntil || 0) - Date.now()) / 1000))}`, 'paused'],
     browser: ['downloading', 'Waiting for the browser', 'resolving'],
@@ -84,8 +84,8 @@ function matches(it, f = filter) {
 
 function metaLine(it, v) {
   const parts = [];
-  if (it.status === 'browser') return `<span>Finish the wait or captcha in your browser and click its download button. Hakobu takes the download from there.</span>`;
-  if (it.needsBrowser && it.status === 'error') return `<span class="err" title="${esc(it.error)}">This host wants a person: press the globe to open it in your browser.</span>`;
+  if (it.status === 'browser') return `<span>Solve the captcha in the window and click its download button. Hakobu takes the download from there.</span>`;
+  if (it.needsBrowser && it.status === 'error') return `<span class="err" title="${esc(it.error)}">Waiting for you: press the globe, solve the captcha and click download.</span>`;
   if (it.status === 'error') return `<span class="err" title="${esc(it.error)}">${esc(it.error)}</span>`;
   if (it.status === 'waiting') return `<span class="muted ell" title="${esc(it.error || '')}">${esc(it.error || 'Waiting for the host')}</span><span class="muted">Press play to try now</span>`;
   if (v.size) parts.push(v.group === 'completed' || v.group === 'seeding' ? bytes(v.size) : `${bytes(v.downloaded)} of ${bytes(v.size)}`);
@@ -145,7 +145,8 @@ function createRow(it) {
       <span class="status"></span>
       <span class="pct"></span>
       <div class="quick">
-        <button data-q="browser" class="hidden" title="Open in browser (wait / captcha)">${icon('globe')}</button>
+        <button data-q="browser" class="hidden" title="Solve the captcha in a window">${icon('globe')}</button>
+        <button data-q="ext" class="hidden" title="Open in your own browser instead (needs the Hakobu extension)">${icon('link')}</button>
         <button data-q="toggle"></button>
         <button data-q="open" title="Show in folder">${icon('folder')}</button>
         <button data-q="remove" title="Remove">${icon('x')}</button>
@@ -172,6 +173,7 @@ function patchRow(el, it) {
   el.querySelector('.pct').textContent = v.group === 'completed' ? '' : pct.toFixed(pct < 10 ? 1 : 0) + '%';
   const canPause = ['active', 'queued', 'resolving', 'seeding', 'retrying'].includes(it.status);
   el.querySelector('[data-q="browser"]').classList.toggle('hidden', !it.needsBrowser);
+  el.querySelector('[data-q="ext"]').classList.toggle('hidden', !it.needsBrowser);
   el.classList.toggle('needs-browser', !!it.needsBrowser);
   const toggle = el.querySelector('[data-q="toggle"]');
   const want = canPause ? 'pause' : 'play';
@@ -332,7 +334,7 @@ function notifyTransitions() {
     if (before && before !== it.status) {
       if (it.status === 'completed' && before !== 'seeding') toast('ok', 'Download complete', it.name);
       else if (it.status === 'seeding' && before === 'active') toast('ok', 'Torrent finished · seeding', it.name);
-      else if (it.status === 'error' && it.needsBrowser) toast('info', 'Needs your browser', `${it.name}: the host wants a wait or a captcha. Press the globe on it.`);
+      else if (it.status === 'error' && it.needsBrowser) toast('info', 'Waiting for you', `${it.name}: solve the captcha. Press the globe on it.`);
       else if (it.status === 'error') toast('err', 'Download failed', it.error || it.name);
       else if (it.status === 'handed-off') toast('info', `${PROVIDER[it.via]} is ready`, `${it.childIds?.length || 0} file(s) now downloading`);
     }
@@ -510,7 +512,8 @@ $('#list').addEventListener('click', async e => {
     const it = items.find(i => i.id === id);
     if (q === 'toggle') api.action([id], ['active', 'queued', 'resolving', 'seeding'].includes(it.status) ? 'pause' : 'resume');
     if (q === 'open') api.action([id], 'open');
-    if (q === 'browser') api.openInBrowser([id]);
+    if (q === 'browser') api.openHostWindow(id);
+    if (q === 'ext') api.openInBrowser([id]);
     if (q === 'remove') api.action([id], 'remove');
     return;
   }
@@ -1079,7 +1082,7 @@ async function startGrabbed(chosen) {
       const multi = sizes[pkg] > 1;
       let dir = e.dir || pkgDirs[pkg] || (multi && settings.packageSubfolder !== false && e.kind !== 'torrent' ? `${base}\\${safeName(pkg)}` : base);
       if (subfolder && !e.dir) dir += '\\' + String(subfolder).split('/').map(safeName).join('\\'); // keep the folder's own layout
-      return { ...e, package: multi || e.archivePasswords?.length ? pkg : e.package || null, dir, paused };
+      return { ...e, autoRoute: !!viaAuto, package: multi || e.archivePasswords?.length ? pkg : e.package || null, dir, paused };
     })
   );
   const started = new Set(chosen);

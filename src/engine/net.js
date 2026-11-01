@@ -7,6 +7,21 @@
 const { hostOf } = require('./hosters');
 
 let proxies = [];
+const siteFetches = new Map(); // site -> fetch of the session a person solved its captcha or bot check in
+
+// example.com for a.example.com; example.co.uk stays whole.
+function siteOf(url) {
+  try {
+    const parts = new URL(url).hostname.split('.');
+    return parts.slice(/^(co|com|net|org)$/.test(parts[parts.length - 2]) && parts[parts.length - 1].length === 2 ? -3 : -2).join('.');
+  } catch {
+    return '';
+  }
+}
+
+function registerSiteFetch(site, fn) {
+  siteFetches.set(site, fn);
+}
 const dispatchers = new Map();
 
 function configure(list) {
@@ -54,7 +69,10 @@ function netFetch(url, opts = {}) {
   const { route = 0, ...rest } = opts;
   const list = proxies.length ? routes(String(url)) : [null];
   const p = list[((route % list.length) + list.length) % list.length];
-  if (!p) return fetch(url, rest);
+  if (!p) {
+    const viaSession = siteFetches.get(siteOf(url));
+    return viaSession ? viaSession(url, rest) : fetch(url, rest);
+  }
   return require('undici').fetch(url, { ...rest, dispatcher: dispatcher(p.url) });
 }
 
@@ -65,4 +83,4 @@ const routeLabel = (url, route = 0) => {
   return p ? new URL(p.url).host : 'direct';
 };
 
-module.exports = { netFetch, configure, routes, routeCount, routeLabel };
+module.exports = { netFetch, configure, routes, routeCount, routeLabel, siteOf, registerSiteFetch };

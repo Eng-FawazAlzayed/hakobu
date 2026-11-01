@@ -39,7 +39,7 @@ await registry.refresh(true);
   assert.equal(route({ torboxKey: 'k' }, 'https://vikingfile.com/f/abc'), 'torbox');
   assert.equal(route({ realdebridToken: 'k', preferredDebrid: 'realdebrid' }, 'https://vikingfile.com/f/abc'), 'direct', 'RD cannot do VikingFile');
   assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://vikingfile.com/f/abc'), 'torbox', 'falls back to the service that supports it');
-  assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://1fichier.com/?x'), 'realdebrid');
+  assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://rapidgator.net/file/x'), 'realdebrid');
   assert.equal(route({}, 'https://buzzheavier.com/xyz'), 'direct', 'BuzzHeavier works without debrid (built-in resolver)');
   assert.equal(route({}, 'https://example.org/file.zip'), 'direct');
   const m = new Manager({ statePath: null, settings: {}, hosters: registry });

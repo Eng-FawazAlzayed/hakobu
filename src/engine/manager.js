@@ -189,19 +189,18 @@ class Manager extends EventEmitter {
   }
 
   // Decide how a grabbed link is downloaded when the user didn't pick explicitly.
-  // Hoster links go to a configured service that supports that host (preferred one first); otherwise a built-in resolver, otherwise direct.
+  // Your own account or a built-in host module first (direct); then a configured service that supports the host; otherwise direct.
   defaultRoute(entry) {
     if (entry.kind === 'media') return 'ytdlp';
     if (entry.kind === 'torrent') return this.settings.torrentRoute;
     if (this.settings.httpRoute !== 'auto') return this.settings.httpRoute;
-    if (resolverFor(entry.source)?.premium) return 'direct'; // your own premium account for this host comes first
+    if (resolverFor(entry.source)) return 'direct'; // your own premium account, or a built-in module
     const configured = { torbox: !!this.settings.torboxKey, realdebrid: !!this.settings.realdebridToken };
     const supported = this.hosters.providersFor(entry.source).filter(p => configured[p.provider]);
     if (supported.length) {
       const pref = supported.find(p => p.provider === this.settings.preferredDebrid && p.up);
       return (pref || supported.find(p => p.up) || supported[0]).provider;
     }
-    if (resolverFor(entry.source)) return 'direct';
     return (entry.hoster || isHoster(entry.source)) && !this.hosters.list().updated ? this.configuredDebrid() || 'direct' : 'direct';
   }
 
@@ -227,6 +226,7 @@ class Manager extends EventEmitter {
       }
       const item = {
         id: crypto.randomUUID(),
+        autoRoute: e.autoRoute ?? !e.via, // false once the person picked a route
         kind: e.kind, // http | torrent
         via, // direct | p2p | torbox | realdebrid
         source: e.source,
@@ -353,7 +353,7 @@ class Manager extends EventEmitter {
       itemLimiter = new RateLimiter(it.limitKB * 1024);
       this.itemLimiters.set(it.id, itemLimiter);
     }
-    const resolver = resolverFor(it.source);
+    const resolver = it.handedOff ? null : resolverFor(it.source); // a link a person got is the file itself
     const lim = this.hostLimit(this.hostKey(it), resolver);
     const connections = lim.connections ? Math.min(lim.connections, this.settings.connectionsPerDownload) : this.settings.connectionsPerDownload;
     const route = it.route || 0;
@@ -407,6 +407,7 @@ class Manager extends EventEmitter {
           return;
         }
         if (this.tryMirror(it, e)) return;
+        if ((e instanceof PageError || (e instanceof HostError && e.browser)) && this.tryDebrid(it)) return;
         if (!(e instanceof PageError) && !(e instanceof HostError && (e.permanent || e.browser)) && this.autoRetry(it, e)) return;
         if (it.fallbackFrom) e.message = `${e.message} (${this.providerName(it.fallbackFrom)} failed first: ${it.fallbackReason})`;
         this.fail(it, e);
@@ -735,6 +736,20 @@ class Manager extends EventEmitter {
     return { torbox: 'TorBox', realdebrid: 'Real-Debrid' }[via] || via;
   }
 
+  // Direct needs a person, but a configured service supports this host: try that before asking.
+  tryDebrid(it) {
+    if (!it.autoRoute || it.via !== 'direct' || it.fallbackFrom || it.handedOff) return false;
+    const has = { torbox: this.settings.torboxKey, realdebrid: this.settings.realdebridToken };
+    const usable = this.hosters.providersFor(it.source).filter(p => has[p.provider] && p.up);
+    const pick = usable.find(p => p.provider === this.settings.preferredDebrid) || usable[0];
+    if (!pick) return false;
+    Object.assign(it, { via: pick.provider, autoRoute: false, status: 'queued', error: null, probed: false, segments: null, filename: null, downloaded: 0 });
+    this.dirty = true;
+    this.schedule();
+    this.emitUpdate();
+    return true;
+  }
+
   // Debrid failed: download it ourselves instead (P2P for torrents, the host link directly otherwise).
   fallBack(it, err) {
     it.fallbackFrom = it.via;
@@ -798,6 +813,16 @@ class Manager extends EventEmitter {
     return it.pageUrl;
   }
 
+  // The window closed without a download: back to waiting for the person.
+  browserClosed(id) {
+    const it = this.items.get(id);
+    if (!it || it.status !== 'browser') return;
+    it.status = 'error';
+    it.error = it.error || 'Waiting for you to solve the captcha';
+    this.dirty = true;
+    this.emitUpdate();
+  }
+
   // The waiting item a browser download belongs to: same page first, else the newest one opened on that site.
   // Hosts often serve the file from a sub-domain, and some downloads carry no referrer, so the file's own URL counts too.
   matchBrowserWait(referrer, url) {
@@ -819,7 +844,7 @@ class Manager extends EventEmitter {
   browserHandoff(id, entry) {
     const it = this.items.get(id);
     if (!it) return;
-    Object.assign(it, { source: entry.source, headers: entry.headers || null, needsBrowser: false, status: 'queued', error: null, downloaded: 0, progress: 0, size: null });
+    Object.assign(it, { handedOff: true, source: entry.source, headers: entry.headers || null, needsBrowser: false, status: 'queued', error: null, downloaded: 0, progress: 0, size: null });
     if (entry.suggestedName) it.suggestedName = entry.suggestedName;
     delete it.segments;
     delete it.resumable;

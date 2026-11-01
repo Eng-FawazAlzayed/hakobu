@@ -10,6 +10,7 @@ const { HosterRegistry } = require('./engine/hosters');
 const { ToolManager } = require('./engine/tools');
 const { mediaInfo } = require('./engine/media');
 const { HOSTS } = require('./engine/resolvers');
+const { HostWindows } = require('./hostwindow');
 const { decryptDlc } = require('./engine/crawler');
 const { execFile } = require('child_process');
 const crypto = require('crypto');
@@ -54,6 +55,7 @@ async function startApi() {
   return localApi.start({ apiPort: s.apiPort || 6464, token: s.apiToken, cnl: s.cnlEnabled });
 }
 let pendingGrab = [];
+let hostWindows = null;
 
 // Dev helpers: HAKOBU_PROFILE=<dir> uses a throwaway profile, HAKOBU_SHOT=<png> screenshots and quits.
 if (process.env.HAKOBU_PROFILE) app.setPath('userData', process.env.HAKOBU_PROFILE);
@@ -360,6 +362,7 @@ function registerIpc() {
   });
   ipcMain.handle('add', (_e, entries) => manager.add(entries).length);
   ipcMain.handle('openInBrowser', (_e, ids) => ids.map(openInBrowser).filter(Boolean).length);
+  ipcMain.handle('openHostWindow', (_e, id) => hostWindows?.open(id));
   ipcMain.handle('action', async (_e, ids, action) => {
     for (const id of ids) {
       if (action === 'pause') await manager.pause(id);
@@ -573,10 +576,15 @@ app.whenReady().then(async () => {
   await startApi();
   // Hosts with wait timers / captchas: optionally open the page in the browser right away (at most one every few seconds).
   let lastAutoOpen = 0;
+  hostWindows = new HostWindows({
+    manager,
+    file: userFile('host-sessions.json'),
+    onHandoff: it => win?.webContents.send('toast', { kind: 'ok', title: 'Got the download', text: it.name }),
+  });
   manager.on('needsBrowser', it => {
     if (!manager.settings.autoOpenBrowser || Date.now() - lastAutoOpen < 4000) return;
     lastAutoOpen = Date.now();
-    openInBrowser(it.id);
+    hostWindows.open(it.id);
   });
   // RSS rules add matching articles straight to the download list.
   feeds = new FeedService({

@@ -151,5 +151,52 @@ const kraken = {
   },
 };
 
-module.exports = [send, datanodes, kraken];
-module.exports._test = { needsPerson, countdown, formFields, krakenToken, sendCode, datanodesPath };
+// ---- XFileSharing sites: a free-download form, usually a countdown, a second form, then the file ----
+const XFS = ['hexload.com', 'userscloud.com', 'ddownload.com', 'katfile.com', 'dailyuploads.net', 'usersdrive.com', 'clicknupload.click', 'filespayout.com'];
+const fileHref = html => {
+  const m = /<a[^>]+href=["'](https?:\/\/[^"']+\/[^"'/]+\.[a-z0-9]{2,5}(?:\?[^"']*)?)["'][^>]*>[^<]*(?:download|click here)/i.exec(withoutComments(html));
+  return m ? decodeHtml(m[1]) : null;
+};
+const xfs = {
+  id: 'xfs',
+  name: 'File host',
+  test: hostIn(...XFS),
+  free: true,
+  maxConnections: 1,
+  async resolve(url, ctx) {
+    const name = new URL(url).hostname.replace(/^www\./, '');
+    let { res, text } = await getText(ctx, url);
+    if (res.status === 404 || /File Not Found|No such file|file was removed/i.test(text)) throw gone(name);
+    guard(name, res, text);
+    const post = async fields => {
+      await waitOut(name, countdown(text), ctx);
+      return fetcher(ctx)(url, {
+        method: 'POST',
+        redirect: 'manual',
+        body: new URLSearchParams(fields),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: url },
+      });
+    };
+    for (let step = 0; step < 2; step++) {
+      const direct = fileHref(text);
+      if (direct) return { url: direct, headers: { Referer: url } };
+      const fields = formFields(text);
+      if (!fields?.op) break;
+      const answer = await post(fields);
+      const location = answer.headers.get('location');
+      if (location) {
+        await answer.body?.cancel().catch(() => {});
+        return { url: new URL(location, url).href, headers: { Referer: url } };
+      }
+      text = await answer.text();
+      res = answer;
+      guard(name, res, text);
+    }
+    const last = fileHref(text);
+    if (last) return { url: last, headers: { Referer: url } };
+    throw new HostError(`${name} didn't hand out a free link`, { browser: true });
+  },
+};
+
+module.exports = [send, datanodes, kraken, xfs];
+module.exports._test = { needsPerson, countdown, formFields, krakenToken, sendCode, datanodesPath, fileHref };
