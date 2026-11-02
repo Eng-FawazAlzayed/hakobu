@@ -1207,7 +1207,26 @@ function fillSettings() {
   renderApiStatus();
   loadHosters();
   refreshTools(true);
+  api.youtubeSignIn().then(renderYoutubeSignIn);
 }
+
+// ---------- YouTube sign-in ----------
+function renderYoutubeSignIn(st) {
+  $('#ytSignInState').textContent = st.signedIn
+    ? `Signed in through the extension${st.browser ? ` in ${st.browser}` : ''}, updated ${new Date(st.updatedAt).toLocaleString()}. Only youtube.com cookies are kept, encrypted on this PC. YouTube's rules limit automated downloads on an account, so a spare account is safest for large batches.`
+    : 'Sign in to YouTube in your browser, then turn on "Share my YouTube sign-in" in the Hakobu extension. The browsers below can only be read while they are closed, and often not even then.';
+  $('#ytSignOut').hidden = !st.signedIn;
+}
+$('#ytSignOut').addEventListener('click', async () => {
+  settings = await api.youtubeSignOut();
+  fillSettings();
+});
+api.onYoutubeSignIn(({ status, settings: s }) => {
+  settings = s;
+  const sel = $('#settingsForm').elements.ytCookiesBrowser;
+  if (sel) sel.value = s.ytCookiesBrowser || '';
+  renderYoutubeSignIn(status);
+});
 
 // ---------- supported hosts grid ----------
 let hosterData = null;

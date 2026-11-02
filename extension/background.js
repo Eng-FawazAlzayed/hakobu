@@ -1,5 +1,5 @@
 // Hakobu browser extension: context menus, magnet capture and (optional) download capture.
-const DEFAULTS = { port: 6464, token: '', captureDownloads: false, captureMinMB: 1, captureMagnets: true };
+const DEFAULTS = { port: 6464, token: '', captureDownloads: false, captureMinMB: 1, captureMagnets: true, shareYoutube: false };
 
 const settings = () => chrome.storage.sync.get(DEFAULTS);
 
@@ -56,8 +56,37 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'page') return send({ links: await pageLinks(tab.id), page }, 'links');
 });
 
+// The person's YouTube sign-in, sent to Hakobu on this PC only while "Share my YouTube sign-in" is on. Only youtube.com
+// cookies (not the wider google.com ones). YouTube replaces them often, so they're sent again whenever they change.
+async function youtubeCookies() {
+  const all = await chrome.cookies.getAll({ domain: 'youtube.com' });
+  return all.filter(c => /(^|\.)youtube\.com$/i.test(c.domain));
+}
+const browserName = () => (navigator.brave ? 'Brave' : /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome');
+
+async function shareYoutube(manual) {
+  return api('/api/youtube-signin', { cookies: await youtubeCookies(), browser: browserName(), manual });
+}
+
+let shareTimer = null;
+chrome.cookies.onChanged.addListener(({ cookie }) => {
+  if (!/(^|\.)youtube\.com$/i.test(cookie.domain)) return;
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(async () => {
+    if ((await settings()).shareYoutube) shareYoutube(false).catch(() => {}); // Hakobu closed: sent again on next start
+  }, 3000);
+});
+chrome.runtime.onStartup.addListener(async () => {
+  if ((await settings()).shareYoutube) shareYoutube(false).catch(() => {});
+});
+
 // Magnet clicks reported by content.js.
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (msg.type === 'shareYoutube') {
+    // manual: the switch was just turned on, so this sign-in becomes the chosen one. Otherwise only refresh it.
+    (msg.forget ? api('/api/youtube-signin', { cookies: [], manual: true }) : shareYoutube(!!msg.manual)).then(r => reply({ ok: true, ...r }), e => reply({ ok: false, error: e.message }));
+    return true;
+  }
   if (msg.type === 'magnet') {
     send({ links: [msg.url], page: sender.tab?.url }, 'magnet').then(() => reply({ ok: true }), () => reply({ ok: false }));
     return true;

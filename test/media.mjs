@@ -7,12 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { ToolManager, cmpVersion, download } = require('../src/engine/tools.js');
 const { MediaTask, isMediaUrl, youtubeId, friendlyError, buildArgs } = require('../src/engine/media.js');
+const { YoutubeCookies, sanitize, toNetscape } = require('../src/engine/ytcookies.js');
 const { parseLinks } = require('../src/linkparse.js');
 const { Manager } = require('../src/engine/manager.js');
 const ok = msg => console.log('  ✓', msg);
@@ -52,6 +53,60 @@ const tools = new ToolManager(toolsDir);
   assert.ok(mp4.includes('bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b') && mp4.includes('--merge-output-format mp4'));
   assert.ok(!mp4.includes('--no-playlist') && mp4.includes('--cookies-from-browser firefox'));
   ok('yt-dlp options: MP3 + cover art/tags, MP4 height cap with mp4+m4a remux, Deno, playlists, cookies');
+}
+
+// ---- YouTube sign-in shared by the extension ----
+{
+  const dir = path.join(tmp, 'signin');
+  fs.mkdirSync(dir);
+  const file = path.join(dir, 'youtube-signin.dat');
+  const crypt = { encrypt: s => Buffer.from(s).reverse(), decrypt: b => Buffer.from(b).reverse().toString() };
+  const yc = new YoutubeCookies({ file, tempDir: path.join(dir, 'tmp'), ...crypt });
+  const auth = { domain: '.youtube.com', path: '/', secure: true, expirationDate: 1900000000.5, name: 'SAPISID', value: 'abc' };
+  assert.deepEqual(sanitize([auth, { ...auth, domain: '.google.com' }, { ...auth, domain: 'youtube.com.evil.test' }, { ...auth, name: 'x\ny' }]).length, 1, 'only well-formed youtube.com cookies');
+  assert.equal(yc.set([{ ...auth, name: 'PREF' }], 'Brave').signedIn, false, 'a signed-out browser is not a sign-in');
+  assert.equal(yc.set([auth, { domain: 'www.youtube.com', name: 'PREF', value: 'p' }], 'Brave').signedIn, true);
+  assert.ok(!fs.readFileSync(file).toString().includes('SAPISID'), 'not plain text on disk');
+  const again = new YoutubeCookies({ file, tempDir: path.join(dir, 'tmp'), ...crypt });
+  assert.equal(again.status().browser, 'Brave', 'survives a restart');
+  const t = again.tempFile();
+  const text = fs.readFileSync(t.file, 'utf8');
+  assert.ok(text.startsWith('# Netscape HTTP Cookie File\n'));
+  assert.ok(text.includes('.youtube.com\tTRUE\t/\tTRUE\t1900000000\tSAPISID\tabc') && text.includes('www.youtube.com\tFALSE\t/\tFALSE\t0\tPREF\tp'));
+  const leftover = t.file;
+  new YoutubeCookies({ file, tempDir: path.join(dir, 'tmp'), ...crypt });
+  assert.ok(!fs.existsSync(leftover), 'a cookies.txt left by a killed app is wiped at start');
+  const t2 = yc.tempFile();
+  t2.remove();
+  assert.ok(!fs.existsSync(t2.file));
+  yc.clear();
+  assert.ok(!fs.existsSync(file) && yc.tempFile() === null);
+
+  const tt = { dir: 'C:\\T', path: f => 'C:\\T\\' + f };
+  const it = { source: 'https://youtu.be/x', dir: 'D' };
+  const withFile = buildArgs(it, { tools: tt, settings: { ytCookiesBrowser: 'extension' }, cookieFile: 'C:\\c.txt' }).join(' ');
+  assert.ok(withFile.includes('--cookies C:\\c.txt') && !withFile.includes('--cookies-from-browser'));
+  assert.ok(!buildArgs(it, { tools: tt, settings: { ytCookiesBrowser: 'extension' } }).join(' ').includes('--cookies'), '"extension" is not a browser name for yt-dlp');
+  assert.match(friendlyError('ERROR: [youtube] x: Sign in to confirm you\u2019re not a bot'), /Share my YouTube sign-in/);
+  assert.match(friendlyError('ERROR: [youtube] x: Sign in to confirm you\u2019re not a bot', { usedSignIn: true }), /may have expired/);
+  assert.match(friendlyError('ERROR: Could not copy Chrome cookie database. See https://x for more info'), /can't read this browser's cookies/);
+
+  // yt-dlp reads the file and sends the cookies (a local cookie, so no YouTube traffic)
+  if (tools.installed('yt-dlp')) {
+    const seen = [];
+    const srv = http.createServer((req, res) => {
+      seen.push(req.headers.cookie || '');
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const jar = path.join(dir, 'jar.txt');
+    fs.writeFileSync(jar, toNetscape([{ domain: '127.0.0.1', path: '/', secure: false, expires: 0, name: 'SAPISID', value: 'abc' }]));
+    await new Promise(r => execFile(tools.path('yt-dlp.exe'), ['--cookies', jar, '--simulate', '--no-warnings', `http://127.0.0.1:${srv.address().port}/v.mp4`], { windowsHide: true }, () => r()));
+    srv.close();
+    assert.ok(seen.some(c => c.includes('SAPISID=abc')), `yt-dlp sent the cookie (saw: ${seen.join(' | ')})`);
+  }
+  ok('YouTube sign-in: only youtube.com, encrypted at rest, temp cookies.txt removed, yt-dlp reads it, clear error messages');
 }
 
 // ---- tool downloads: checksum enforcement + resume ----

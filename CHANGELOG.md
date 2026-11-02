@@ -7,6 +7,7 @@ All notable changes to Hakobu are listed here. Versions follow [semantic version
 Plugin sources, stability fixes, and JDownloader-style handling of file hosts and their special cases.
 
 ### Added
+- YouTube sign-in for "confirm you're not a bot" and age checks: turn on "Share my YouTube sign-in" in the Hakobu extension and downloads use your own session. Only youtube.com cookies go to Hakobu on this PC, they stay encrypted, and they refresh by themselves until you turn it off or press "Forget this sign-in" in Settings. Works while the browser is open, unlike reading a Chromium browser's cookie file.
 - Built-in host support without debrid: MEGA files and folders (decrypted while downloading), Pixeldrain files and lists, Gofile folders (with a premium token; otherwise they open in the browser), MediaFire files and folders, Google Drive files and folders (including the "can't scan for viruses" page), Send, DataNodes and KrakenFiles, and 1fichier free downloads with their waits. Sites that ask for a captcha or bot check go to the browser or debrid.
 - Google Docs, Sheets and Slides in a shared Drive folder download as .docx, .xlsx and .pptx.
 - Link crawler: folder links, DLC containers (open, drop or double-click a .dlc; the extension sends .dlc downloads to Hakobu), paste sites and web server "Index of" listings turn into their files in LinkGrabber, with sub-folders kept. Link protectors such as filecrypt are marked "protected" with a button to open them in the browser.

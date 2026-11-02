@@ -325,8 +325,10 @@
             <label class="field"><span>Video quality</span><select name="ytVideoQuality"><option value="2160">4K (2160p)</option><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option><option value="best">Best available</option></select></label>
             <label class="field"><span>MP3 quality</span><select name="ytAudioQuality"><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="192">192 kbps</option><option value="128">128 kbps</option></select></label>
           </div>
-          <label class="field"><span>Use cookies from browser <em>fixes "confirm you're not a bot" and age checks</em></span>
-            <select name="ytCookiesBrowser"><option value="">Don't use cookies</option><option value="firefox">Firefox (works best)</option><option value="edge">Edge</option><option value="chrome">Chrome</option><option value="brave">Brave</option></select></label>
+          <label class="field"><span>YouTube sign-in <em>for "confirm you're not a bot" and age checks</em></span>
+            <select name="ytCookiesBrowser"><option value="">Don't sign in</option><option value="extension">Shared by the Hakobu extension (recommended)</option><option value="firefox">Read from Firefox</option><option value="edge">Read from Edge</option><option value="chrome">Read from Chrome</option><option value="brave">Read from Brave</option></select></label>
+          <p class="hint" id="ytSignInState"></p>
+          <div class="hrow"><button type="button" class="btn ghost" id="ytSignOut" hidden>Forget this sign-in</button></div>
           <div class="tools-list" id="toolsList"></div>
           <div class="hrow"><button type="button" class="btn ghost" id="toolsCheck"><svg data-icon="refresh"></svg>Check for updates</button><button type="button" class="btn ghost" id="toolsRepair"><svg data-icon="download"></svg>Reinstall all</button></div>
           <label class="switch"><input type="checkbox" name="autoUpdateTools" /><i></i>Update yt-dlp, Deno and ffmpeg automatically (daily check)</label>

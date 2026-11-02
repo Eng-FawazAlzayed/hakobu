@@ -25,15 +25,34 @@ function youtubeId(url) {
 }
 const youtubePlaylist = url => /[?&]list=([A-Za-z0-9_-]+)/.exec(url || '')?.[1] || null;
 
-// Raw yt-dlp errors -> plain language.
-function friendlyError(raw) {
+const isYoutube = url => {
+  try {
+    return /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+
+// The sign-in shared by the extension, as a cookies.txt for one yt-dlp run. Only ever for YouTube links.
+function sharedCookies(url, settings, youtubeCookies) {
+  return settings?.ytCookiesBrowser === 'extension' && isYoutube(url) ? youtubeCookies?.tempFile() || null : null;
+}
+
+const SIGN_IN_HOW = 'In your browser, sign in to YouTube, then turn on "Share my YouTube sign-in" in the Hakobu extension.';
+
+// Raw yt-dlp errors -> plain language. usedSignIn: this run already sent the sign-in shared by the extension.
+function friendlyError(raw, { usedSignIn = false } = {}) {
   const s = String(raw || '');
   const rules = [
-    [/confirm you.?re not a bot|sign in to confirm/i, "YouTube is asking to confirm you're not a bot (too many downloads from this connection). Wait a while, or set \"Use cookies from browser\" in Settings → YouTube."],
-    [/HTTP Error 429|Too Many Requests/i, 'YouTube is rate-limiting this connection (HTTP 429). Wait a bit and retry, or use browser cookies.'],
+    [/could not copy .*cookie database|failed to decrypt with dpapi|app.?bound/i, `Hakobu can't read this browser's cookies directly. ${SIGN_IN_HOW}`],
+    [/could not find .*cookies? database/i, `That browser has no cookies Hakobu can read (Settings → YouTube). ${SIGN_IN_HOW}`],
+    [/confirm you.?re not a bot|sign in to confirm/i, usedSignIn
+      ? 'YouTube still wants a sign-in, so the one Hakobu has may have expired. Open YouTube in your browser, check you are signed in, then open the Hakobu extension and try again.'
+      : `YouTube is asking to confirm you're not a bot, which takes a sign-in. ${SIGN_IN_HOW}`],
+    [/HTTP Error 429|Too Many Requests/i, 'YouTube is rate-limiting this connection (HTTP 429). Wait a bit and retry.'],
     [/Private video/i, 'This video is private.'],
     [/members-only|join this channel/i, 'This video is for channel members only.'],
-    [/age.?restricted|confirm your age|inappropriate for some users/i, 'This video is age-restricted. Use cookies from a browser where you are signed in (Settings → YouTube).'],
+    [/age.?restricted|confirm your age|inappropriate for some users/i, `This video is age-restricted. ${SIGN_IN_HOW}`],
     [/Video unavailable|This video is not available|has been removed/i, 'This video is unavailable (removed, blocked in your country, or the link is wrong).'],
     [/Unsupported URL/i, "yt-dlp doesn't support this site."],
     [/ffmpeg.*not (found|installed)|ffprobe.*not found/i, 'ffmpeg is missing. Settings → Media tools → Install.'],
@@ -64,7 +83,7 @@ const PP_LABEL = {
 
 const SEP = '␞'; // field separator unlikely to appear in titles
 
-function buildArgs(it, { tools, settings }) {
+function buildArgs(it, { tools, settings, cookieFile }) {
   const fmt = it.mediaFormat || settings.ytFormat || 'mp4';
   const q = it.mediaQuality || (fmt === 'mp3' ? settings.ytAudioQuality || '192' : settings.ytVideoQuality || '1080');
   const args = [
@@ -89,17 +108,19 @@ function buildArgs(it, { tools, settings }) {
     const h = q === 'best' ? '' : `[height<=${q}]`;
     args.push('-f', `bv*${h}[ext=mp4]+ba[ext=m4a]/bv*${h}+ba/b${h}/b`, '--merge-output-format', 'mp4');
   }
-  if (settings.ytCookiesBrowser) args.push('--cookies-from-browser', settings.ytCookiesBrowser);
+  if (cookieFile) args.push('--cookies', cookieFile);
+  else if (settings.ytCookiesBrowser && settings.ytCookiesBrowser !== 'extension') args.push('--cookies-from-browser', settings.ytCookiesBrowser);
   if (it.limitKB > 0) args.push('--limit-rate', `${it.limitKB}K`);
   args.push('--', it.source);
   return args;
 }
 
 class MediaTask {
-  constructor(item, { tools, settings }) {
+  constructor(item, { tools, settings, youtubeCookies }) {
     this.item = item;
     this.tools = tools;
     this.settings = settings;
+    this.youtubeCookies = youtubeCookies;
     this.aborted = false;
   }
 
@@ -112,7 +133,8 @@ class MediaTask {
   run() {
     const it = this.item;
     if (!this.tools.ready()) return Promise.reject(new Error('Media tools are not installed yet. Settings → Media tools → Install.'));
-    const args = buildArgs(it, this);
+    const cookies = sharedCookies(it.source, this.settings, this.youtubeCookies);
+    const args = buildArgs(it, { tools: this.tools, settings: this.settings, cookieFile: cookies?.file });
     it.files = it.files || [];
     const parts = {}; // video id -> { total parts, done parts }
     let current = null;
@@ -184,12 +206,16 @@ class MediaTask {
           else if ((stderr += line + '\n').length > 20000) stderr = stderr.slice(-10000);
         }
       });
-      proc.on('error', e => reject(e));
+      proc.on('error', e => {
+        cookies?.remove();
+        reject(e);
+      });
       proc.on('close', code => {
+        cookies?.remove();
         if (buf) onLine(buf);
         if (this.aborted) return reject(abortError());
         if (code === 0) return resolve();
-        const e = new Error(friendlyError(stderr));
+        const e = new Error(friendlyError(stderr, { usedSignIn: !!cookies }));
         e.raw = stderr.slice(-2000);
         reject(e);
       });
@@ -198,7 +224,7 @@ class MediaTask {
 }
 
 // Title / channel / thumbnail for LinkGrabber. oEmbed is instant for YouTube; other sites and playlists use yt-dlp.
-async function mediaInfo(url, tools) {
+async function mediaInfo(url, tools, { settings, youtubeCookies } = {}) {
   const id = youtubeId(url);
   const list = youtubePlaylist(url);
   if (id) {
@@ -213,13 +239,15 @@ async function mediaInfo(url, tools) {
     } catch {}
   }
   if (!tools?.installed('yt-dlp')) return id ? { thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, id } : {};
+  const cookies = sharedCookies(url, settings, youtubeCookies);
   return new Promise(resolve => {
     execFile(
       tools.path('yt-dlp.exe'),
-      ['-J', '--flat-playlist', '--no-warnings', '--encoding', 'utf-8', '--js-runtimes', `deno:${tools.path('deno.exe')}`, '--', url],
+      ['-J', '--flat-playlist', '--no-warnings', '--encoding', 'utf-8', '--js-runtimes', `deno:${tools.path('deno.exe')}`, ...(cookies ? ['--cookies', cookies.file] : []), '--', url],
       { windowsHide: true, timeout: 45000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } },
       (err, stdout, stderr) => {
-        if (err) return resolve({ error: friendlyError(stderr || err.message), offline: /unavailable|private|Unsupported URL/i.test(stderr || '') });
+        cookies?.remove();
+        if (err) return resolve({ error: friendlyError(stderr || err.message, { usedSignIn: !!cookies }), offline: /unavailable|private|Unsupported URL/i.test(stderr || '') });
         try {
           const j = JSON.parse(stdout);
           const thumb = j.thumbnail || j.thumbnails?.slice(-1)[0]?.url || (j.entries?.[0]?.thumbnails?.slice(-1)[0]?.url ?? null);

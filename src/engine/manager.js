@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS = {
   ytFormat: 'mp4', // mp4 | mp3
   ytVideoQuality: '1080', // 2160 | 1440 | 1080 | 720 | 480 | best
   ytAudioQuality: '192', // 128 | 192 | 256 | 320
-  ytCookiesBrowser: '', // '' | firefox | edge | chrome | brave (helps with "confirm you're not a bot")
+  ytCookiesBrowser: '', // '' | extension (sign-in shared by the Hakobu extension) | firefox | edge | chrome | brave
   maxConcurrentMedia: 2, // YouTube rate-limits; keep this low
   autoUpdateTools: true,
   fallbackRetries: 2,
@@ -433,7 +433,7 @@ class Manager extends EventEmitter {
     it.status = 'active';
     it.error = null;
     it.stage = 'Starting';
-    const task = new MediaTask(it, { tools: this.tools, settings: this.settings });
+    const task = new MediaTask(it, { tools: this.tools, settings: this.settings, youtubeCookies: this.youtubeCookies });
     this.tasks.set(it.id, task);
     task
       .run()

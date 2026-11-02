@@ -9,6 +9,7 @@ const { checkLinks, packageName } = require('./engine/linkcheck');
 const { HosterRegistry } = require('./engine/hosters');
 const { ToolManager } = require('./engine/tools');
 const { mediaInfo } = require('./engine/media');
+const { YoutubeCookies } = require('./engine/ytcookies');
 const { HOSTS } = require('./engine/resolvers');
 const { HostWindows } = require('./hostwindow');
 const crashGuard = require('./engine/crashguard');
@@ -407,7 +408,15 @@ function registerIpc() {
     return p.user();
   });
   ipcMain.handle('torrentInfo', (_e, entry) => manager.torrents.fetchMetadata(entry));
-  ipcMain.handle('mediaInfo', (_e, url) => mediaInfo(url, tools));
+  ipcMain.handle('mediaInfo', (_e, url) => mediaInfo(url, tools, { settings: manager.settings, youtubeCookies: manager.youtubeCookies }));
+  ipcMain.handle('youtubeSignIn', () => manager.youtubeCookies.status());
+  // Off the select too, so the extension's background updates can't bring the sign-in straight back.
+  ipcMain.handle('youtubeSignOut', () => {
+    manager.youtubeCookies.clear();
+    manager.applySettings({ ytCookiesBrowser: '' });
+    saveSettings(manager.settings);
+    return manager.settings;
+  });
   ipcMain.handle('toolsStatus', (_e, checkLatest) => tools.status({ checkLatest: !!checkLatest }));
   ipcMain.handle('toolsInstall', async (_e, names) => {
     const results = await tools.install(names || undefined, p => win?.webContents.send('toolsProgress', p));
@@ -541,6 +550,13 @@ app.whenReady().then(async () => {
   setInterval(() => hosters.refresh().catch(() => {}), 6 * 3600 * 1000);
   manager = new Manager({ statePath: userFile('downloads.json'), settings, items: loadItems(userFile('downloads.json'), backup => corruptFiles.push(backup)), hosters, tools });
   await manager.init();
+  const canEncrypt = safeStorage.isEncryptionAvailable();
+  manager.youtubeCookies = new YoutubeCookies({
+    file: userFile('youtube-signin.dat'),
+    tempDir: userFile('youtube-signin-tmp'),
+    encrypt: canEncrypt ? s => safeStorage.encryptString(s) : null,
+    decrypt: canEncrypt ? b => safeStorage.decryptString(b) : null,
+  });
   manager.on('limits', alt => win?.webContents.send('limits', alt));
   manager.on('extracted', (it, st) => win?.webContents.send('toast', { kind: 'ok', title: 'Extracted', text: path.basename(st.dest || it.name) }));
   manager.on('extractFailed', (it, st) => win?.webContents.send('toast', { kind: 'err', title: st.state === 'password' ? 'Archive needs a password' : 'Extraction failed', text: `${st.archive}: ${st.error}` }));
@@ -564,6 +580,17 @@ app.whenReady().then(async () => {
   }
   localApi = new LocalApi({
     version: app.getVersion(),
+    // Turning the switch on in the extension chooses this sign-in; its later updates only count while it's still chosen.
+    onYoutubeSignIn: ({ cookies, browser, manual }) => {
+      if (!manual && manager.settings.ytCookiesBrowser !== 'extension') return { ...manager.youtubeCookies.status(), ignored: true };
+      const status = manager.youtubeCookies.set(cookies, browser);
+      if (manual && manager.settings.ytCookiesBrowser !== 'extension' && status.signedIn) {
+        manager.applySettings({ ytCookiesBrowser: 'extension' });
+        saveSettings(manager.settings);
+      }
+      win?.webContents.send('youtubeSignIn', { status, settings: manager.settings });
+      return status;
+    },
     onLinks: (entries, meta) => {
       // A browser download from a page a "Needs browser" item is waiting on finishes that item instead.
       const waiting = meta.capture && entries.length === 1 && entries[0].kind === 'http' && manager.matchBrowserWait(meta.referrer, entries[0].source);

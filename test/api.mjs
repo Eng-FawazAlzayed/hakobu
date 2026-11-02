@@ -15,7 +15,8 @@ const ok = msg => console.log('  ✓', msg);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-api-'));
 
 const got = [];
-const localApi = new LocalApi({ onLinks: (entries, meta) => got.push({ entries, meta }), expecting: ref => ref === 'https://host.example/f/1', version: '9.9.9' });
+const signIns = [];
+const localApi = new LocalApi({ onLinks: (entries, meta) => got.push({ entries, meta }), expecting: ref => ref === 'https://host.example/f/1', onYoutubeSignIn: s => (signIns.push(s), { signedIn: true }), version: '9.9.9' });
 const PORT = 46000 + Math.floor(Math.random() * 1000);
 const status = await localApi.start({ apiPort: PORT, token: 'tok123', cnl: true });
 const base = `http://127.0.0.1:${PORT}`;
@@ -52,6 +53,13 @@ try {
     assert.equal(cap.meta.capture, true);
     assert.equal(cap.meta.referrer, 'https://host.example/f/1');
     ok('browser hand-off API: "expecting" check needs the token, captured downloads carry capture + referrer');
+
+    const signIn = JSON.stringify({ cookies: [{ name: 'SID' }], browser: 'Brave', manual: true });
+    assert.equal((await fetch(`${base}/api/youtube-signin`, { method: 'POST', body: signIn })).status, 401, 'token required');
+    assert.equal(signIns.length, 0);
+    assert.deepEqual(await (await fetch(`${base}/api/youtube-signin`, { method: 'POST', headers: H, body: signIn })).json(), { signedIn: true });
+    assert.deepEqual(signIns.pop(), { cookies: [{ name: 'SID' }], browser: 'Brave', manual: true });
+    ok('YouTube sign-in API needs the token');
   }
 
   // ---- Click'n'Load ----

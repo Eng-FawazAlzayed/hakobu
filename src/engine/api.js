@@ -48,8 +48,10 @@ const timingSafeEq = (a, b) => {
 class LocalApi {
   // onLinks(entries, meta) is called with parsed LinkGrabber entries.
   // expecting(referrer) says whether a download in "Needs browser" is waiting for a browser download from that page.
-  constructor({ onLinks, getState, expecting = () => false, version = '0.1.0' }) {
+  // onYoutubeSignIn({ cookies, browser, manual }) receives the sign-in the user chose to share and returns its status.
+  constructor({ onLinks, getState, expecting = () => false, onYoutubeSignIn, version = '0.1.0' }) {
     this.onLinks = onLinks;
+    this.onYoutubeSignIn = onYoutubeSignIn;
     this.getState = getState;
     this.expecting = expecting;
     this.version = version;
@@ -90,6 +92,15 @@ class LocalApi {
     if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, this.getState?.() || {});
     // The extension asks before taking over a browser download it would otherwise leave alone.
     if (req.method === 'GET' && url.pathname === '/api/expecting') return send(res, 200, { expecting: !!this.expecting(url.searchParams.get('referrer') || '', url.searchParams.get('url') || '') });
+    if (req.method === 'POST' && url.pathname === '/api/youtube-signin' && this.onYoutubeSignIn) {
+      let body;
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return send(res, 400, { error: 'Expected JSON' });
+      }
+      return send(res, 200, this.onYoutubeSignIn({ cookies: body.cookies, browser: body.browser, manual: body.manual === true }));
+    }
     if (req.method === 'POST' && url.pathname === '/api/add') {
       let body;
       try {
