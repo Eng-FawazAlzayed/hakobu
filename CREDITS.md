@@ -33,6 +33,10 @@ by them.
 | `src/engine/hosts/mediafire.js` | `jd/plugins/hoster/MediafireCom.java` | 53182 |
 | `src/engine/hosts/gdrive.js` | `jd/plugins/hoster/GoogleDrive.java` | 53450 |
 
+Licence note: JDownloader's repository ships GPL version 3 as its licence (`svn_trunk/ressourcen/license.txt`). The per-host
+files above carry its "version 3 or later" header. Revision 53786 of `XFileSharingProBasic.java` has no header of its own;
+revision r49881 of that file (https://github.com/mirror/jdownloader, commit f274b298) does.
+
 The logic was rewritten in JavaScript and changed to fit Hakobu. In particular, captchas go to a window where the person
 solves them, and code that works around bot checks was not ported. Only GPL source files were used, not the closed parts
 of JDownloader's official builds.
