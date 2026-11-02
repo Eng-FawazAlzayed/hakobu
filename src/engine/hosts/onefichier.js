@@ -1,4 +1,6 @@
 // 1fichier: free downloads (one at a time, with a wait between files per IP) and premium through its API key.
+// The messages in freeWait are from JDownloader 2 (GPL-3.0-or-later, JD-Team), jd/plugins/hoster/OneFichierCom.java r53703,
+// source mirror commit 6ab1aecd of 2026-11-02.
 const { getText, getJson, hostIn, decodeHtml, HostError, gone } = require('./common');
 
 const DOMAINS = ['1fichier.com', 'alterupload.com', 'cjoint.net', 'desfichiers.com', 'dfichiers.com', 'megadl.fr', 'mesfichiers.org', 'piecejointe.net', 'pjointe.com', 'tenvoi.com', 'dl4free.com'];
@@ -9,9 +11,15 @@ const canonical = url => {
 };
 
 function freeWait(html) {
-  const m = /You must wait (?:at least )?(\d+) minutes?/i.exec(html) || /Vous devez attendre (?:encore )?(\d+) minutes?/i.exec(html);
+  if (/>\s*Your requests are too fast/i.test(html)) return new HostError('1fichier: requests too fast, waiting', { wait: 5 * 60000, ipLimit: true, hostWide: true });
+  if (/>\s*Our services are in maintenance/i.test(html)) return new HostError('1fichier is under maintenance', { wait: 30 * 60000, hostWide: true });
+  if (/>\s*Software error:?\s*<|>\s*Connexion à la base de données impossible<|>Can\'t connect DB/i.test(html)) return new HostError('1fichier: server error', { wait: 15 * 60000 });
+  if (/>\s*IP Locked|>\s*Will be unlocked within 1h\.|Your account will be unlock/i.test(html)) return new HostError('1fichier locked your IP for an hour', { wait: 60 * 60000, ipLimit: true, hostWide: true });
+  if (/not possible to free unregistered users/i.test(html)) return new HostError('1fichier: free downloads are not offered to your connection', { wait: 60 * 60000, ipLimit: true, hostWide: true });
+  if (/>\s*(?:Access to this file is protected|This file is protected)/i.test(html)) return new HostError('1fichier: the uploader only allows subscribers or chosen users to download this', { permanent: true });
+  const m = /you must wait (?:at least |up to )?\s*(\d+)\s*minutes?/i.exec(html) || /Vous devez attendre (?:encore )?(\d+) minutes?/i.exec(html);
   if (m) return new HostError(`1fichier: wait ${m[1]} minutes between free downloads`, { wait: (Number(m[1]) + 1) * 60000, ipLimit: true, hostWide: true });
-  if (/only download one file at a time|un seul fichier à la fois/i.test(html)) {
+  if (/only download one file at a time|un seul fichier à la fois|>\s*You already downloading (?:some|a) file|>\s*veuillez patienter avant de télécharger un autre fichier|\/>\s*Téléchargements en cours/i.test(html)) {
     return new HostError('1fichier: free users get one download at a time', { wait: 2 * 60000, ipLimit: true, hostWide: true });
   }
   return null;

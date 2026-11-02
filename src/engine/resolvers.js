@@ -13,6 +13,7 @@ const HOSTS = [
   require('./hosts/gdrive'),
   require('./hosts/onefichier'),
   require('./hosts/buzzheavier'),
+  ...require('./hosts/xfs'),
   ...require('./hosts/simple'),
   ...require('./hosts/premium'),
 ];

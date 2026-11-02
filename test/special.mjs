@@ -24,6 +24,8 @@ const onefichier = require('../src/engine/hosts/onefichier.js');
 const { resolverFor, setAccounts, isFolderLink } = require('../src/engine/resolvers.js');
 const { TorBox } = require('../src/debrid/torbox.js');
 const simpleHosts = require('../src/engine/hosts/simple.js');
+const xfsHosts = require('../src/engine/hosts/xfs.js');
+const buzz = require('../src/engine/hosts/buzzheavier.js');
 const tools = require('../src/engine/tools.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-special-'));
@@ -549,11 +551,9 @@ const newManager = (settings = {}) => {
   const xfs = '<form method="POST"><input type="hidden" name="op" value="download2"><input type="hidden" name="id" value="abc123def"><input type="hidden" name="rand" value="r&amp;1"><input name="method_free" value=""></form>';
   assert.deepEqual(t.formFields(xfs), { op: 'download2', id: 'abc123def', rand: 'r&1', method_free: '' });
   assert.equal(t.formFields('<form><input name="q"></form>'), null);
-  assert.equal(t.krakenToken('<form id="dl-form" action="/download/x"><input type="hidden" name="token" value="tok1"></form>'), 'tok1');
-  assert.equal(t.sendCode('https://send.cm/d/abcd1234'), 'abcd1234');
-  assert.equal(t.sendCode('https://send.now/abcd1234ef/game.zip.html'), 'abcd1234ef');
-  assert.deepEqual(t.datanodesPath('https://datanodes.to/abc123/x%20y.zip'), { code: 'abc123', name: 'x y.zip' });
-  assert.deepEqual(t.datanodesPath('https://datanodes.to/d/abc123/x.zip'), { code: 'abc123', name: 'x.zip' });
+  assert.equal(t.krakenHash('https://krakenfiles.com/view/abc123/file.html'), 'abc123');
+  assert.equal(t.vikingId('https://vikingfile.com/f/AbCdEf1234'), 'AbCdEf1234');
+  assert.equal(t.sizeOf('1.5 GB'), 1610612736);
   // A person is needed: Cloudflare's check or a captcha field. A comment that only mentions reCAPTCHA doesn't count.
   const res = h => ({ headers: new Headers(h) });
   assert.equal(t.needsPerson(res({ 'cf-mitigated': 'challenge' }), ''), 'a bot check');
@@ -572,7 +572,7 @@ const newManager = (settings = {}) => {
       }
       return new Response(xfs, { status: 200 });
     };
-    const send = simpleHosts.find(h => h.id === 'send');
+    const send = xfsHosts.find(h => h.id === 'send');
     const r = await send.resolve('https://send.cm/abcd1234ef', {});
     assert.equal(r.url, 'https://cdn.send.example/f/x.zip');
     assert.equal(posted, 'download2');
@@ -584,10 +584,10 @@ const newManager = (settings = {}) => {
     await assert.rejects(send.resolve('https://send.now/abcd1234ef', {}), e => e.browser && /captcha/.test(e.message));
     assert.equal(posts, 0, 'nothing was posted past the captcha');
     globalThis.fetch = async () => new Response(JSON.stringify({ url: 'https%3A%2F%2Fcdn.dn.example%2Fx.zip' }), { status: 200 });
-    const dn = await simpleHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {});
+    const dn = await xfsHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {});
     assert.equal(dn.url, 'https://cdn.dn.example/x.zip');
     globalThis.fetch = async () => new Response('<title>File Not Found</title>', { status: 404 });
-    await assert.rejects(simpleHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {}), e => e.permanent);
+    await assert.rejects(xfsHosts.find(h => h.id === 'datanodes').resolve('https://datanodes.to/abc123/x.zip', {}), e => e.permanent);
   } finally {
     globalThis.fetch = real;
   }
@@ -702,13 +702,133 @@ const newManager = (settings = {}) => {
     if (step === 1) return new Response('<form><input type="hidden" name="op" value="download2"><input type="hidden" name="rand" value="r"></form><script>var seconds = 0;</script>');
     return new Response(null, { status: 302, headers: { location: 'https://s1.hexload.com/d/x.zip' } });
   };
-  const x = simpleHosts.find(h => h.id === 'xfs');
+  const x = xfsHosts.find(h => h.id === 'hexload');
   assert.equal((await x.resolve('https://hexload.com/abc123', {})).url, 'https://s1.hexload.com/d/x.zip');
   globalThis.fetch = async () => new Response('<form><input type="hidden" name="op" value="download1"></form><div class="g-recaptcha"></div>');
   await assert.rejects(x.resolve('https://hexload.com/abc123', {}), e => e.browser);
   globalThis.fetch = real;
-  assert.equal(simpleHosts._test.fileHref('<a href="https://s2.x.com/d/game.zip" class="btn">Download file</a>'), 'https://s2.x.com/d/game.zip');
   ok('direct first, debrid before asking; person-got links skip modules; bot checks need a person; solved sessions reused; XFileSharing flow');
+}
+
+// ---- 11g. ported from JDownloader: XFS offline, waits, errors, forms, links; per-host flows ----
+{
+  const x = xfsHosts._test;
+  const name = 'Host';
+  // Offline and premium-only texts.
+  assert.ok(x.isOffline(200, '<b>File Not Found</b>') && x.isOffline(200, 'No such file') && x.isOffline(404, '') && x.isOffline(200, '<div>The file expired</div>'));
+  assert.ok(!x.isOffline(200, '<b>Free download</b>'));
+  assert.match(x.premiumOnly('https://h.example/a', '<p>This file reached max downloads today</p>'), /max downloads/);
+  assert.ok(x.premiumOnly('https://h.example/?op=login&redirect=x', ''));
+  // Errors become waits, permanent errors or the window.
+  assert.equal(x.preciseWait('You have to wait 1 hour, 3 minutes'), (3780 + 1) * 1000);
+  assert.equal(x.preciseWait('You have to wait'), 3600000);
+  const thrown = (html, status = 200) => {
+    try {
+      x.checkErrors(name, status, 'https://h.example/a', html);
+    } catch (e) {
+      return e;
+    }
+    return null;
+  };
+  let e = thrown('<p>You have to wait 2 minutes</p>');
+  assert.ok(e.ipLimit && e.hostWide && e.wait === 121000);
+  assert.equal(thrown('You&#39;re fine'), null);
+  assert.equal(thrown("You're using all download slots for IP 1.2.3.4").wait, 300000);
+  assert.equal(thrown('Error happened when generating Download Link').wait, 600000);
+  assert.ok(thrown('<p>Only Premium user can download this file</p>').browser, 'debrid or the window');
+  assert.ok(thrown('<b>Downloads disabled for this file</b>').permanent);
+  assert.ok(thrown('', 404).permanent);
+  assert.equal(thrown('', 429).wait, 60000);
+  // Countdown forms and the file link.
+  assert.equal(x.regexWaittime('<span id="countdown_str">Wait <span id="cx">12</span></span>'), 12);
+  assert.equal(x.regexWaittime('<span class="seconds">7</span>'), 7);
+  const dn = x.HOSTS.find(h => h.id === 'datanodes');
+  const kat = x.HOSTS.find(h => h.id === 'katfile');
+  assert.equal(x.regexWaittime('<x countdown="30">', dn), 30);
+  assert.equal(x.regexWaittime('var estimated_time = 600', kat), 60);
+  assert.equal(x.getDllink('<a href="https://s1.h.example/d/abc123/game.zip">x</a>'), 'https://s1.h.example/d/abc123/game.zip');
+  assert.equal(x.getDllink('<a href="https://cdn.h.example/any/file.bin">Direct Download Link</a>'), 'https://cdn.h.example/any/file.bin');
+  assert.equal(x.getDllink('{"url":"https%3A%2F%2Fcdn.dn.example%2Fx.zip"}', dn), 'https://cdn.dn.example/x.zip');
+  const hex = x.HOSTS.find(h => h.id === 'hexload');
+  assert.equal(x.getDllink(JSON.stringify({ link: Buffer.from('https://h.example/f').toString('base64') }), hex), 'https://h.example/f');
+  const f1 = x.findFormDownload1('<form><input type="hidden" name="op" value="download1"><input name="method_premium" value="p"></form>');
+  assert.deepEqual(f1, { op: 'download1', method_free: 'Free Download' });
+  assert.equal(x.findFormDownload1('<script>var FILE_ID = "a1"; var FNAME = "f.zip";</script>', kat).id, 'a1');
+  assert.equal(x.findFormDownload2('<form><input name="op" value="download2"><input name="adblock_detected" value=""></form>').adblock_detected, '0');
+  const dnForm = x.findFormDownload2('<div file-actions link="https://datanodes.to/abcdefghijkl/x.zip" countdown="5" rand="r1" dl-token="t1">', dn);
+  assert.deepEqual([dnForm.id, dnForm.rand, dnForm.dl_token], ['abcdefghijkl', 'r1', 't1']);
+  assert.ok(!('g_captch__a' in dnForm), 'no field that claims a captcha was done');
+
+  // Whole flows against a mocked site.
+  const real = globalThis.fetch;
+  const site = routes => {
+    globalThis.fetch = async (u, o = {}) => routes(String(u), o);
+  };
+  const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html', ...headers } });
+  try {
+    // A long countdown goes to the queue as a wait instead of holding a connection.
+    site(() => html('<form><input name="op" value="download2"></form><span class="seconds">600</span>'));
+    await assert.rejects(xfsHosts.find(h => h.id === 'clicknupload').resolve('https://clicknupload.click/abc', {}), err => err.wait > 0);
+    // Link check.
+    site(() => html('<form><input name="fname" value="game.zip"><input name="op" value="download1"></form>'));
+    assert.deepEqual(await xfsHosts.find(h => h.id === 'usersdrive').check('https://usersdrive.com/abc', {}), { status: 'online', filename: 'game.zip' });
+    site(() => html('<b>File Not Found</b>'));
+    assert.equal((await xfsHosts.find(h => h.id === 'usersdrive').check('https://usersdrive.com/abc', {})).status, 'offline');
+    site(() => html('<title>Download</title><p>Sign up</p>'));
+    assert.equal((await xfsHosts.find(h => h.id === 'hexload').check('https://hexload.com/abc', {})).status, 'unknown', 'a page with nothing on the file is not "online"');
+    site(() => html('<title>Just a moment...</title>', 403, { 'cf-mitigated': 'challenge' }));
+    assert.equal((await buzz.check('https://buzzheavier.com/abc', {})).status, 'browser');
+    await assert.rejects(buzz.resolve('https://buzzheavier.com/abc', {}), err => err.browser);
+    // KrakenFiles and VikingFile: a check through their APIs, then the window. No token is ever sent.
+    const k = simpleHosts.find(h => h.id === 'krakenfiles');
+    let posts = 0;
+    site((u, o) => {
+      if (o.method === 'POST') posts++;
+      return new Response(JSON.stringify({ hash: 'abc123', title: 'a.zip', size: '2 MB' }));
+    });
+    assert.deepEqual(await k.check('https://krakenfiles.com/view/abc123/file.html', {}), { status: 'online', filename: 'a.zip', size: 2097152 });
+    await assert.rejects(k.resolve('https://krakenfiles.com/view/abc123/file.html', {}), err => err.browser);
+    assert.equal(posts, 0);
+    const v = simpleHosts.find(h => h.id === 'vikingfile');
+    site(() => new Response(JSON.stringify([{ exist: true, name: 'b.zip', size: 5 }])));
+    assert.deepEqual(await v.check('https://vikingfile.com/f/AbCdEf1234', {}), { status: 'online', filename: 'b.zip', size: 5 });
+    site(() => new Response(JSON.stringify([{ exist: false }])));
+    assert.equal((await v.check('https://vikingfile.com/f/AbCdEf1234', {})).status, 'offline');
+    // FuckingFast: the link on the page; POST /go; the window for a captcha or a bot check.
+    const ff = simpleHosts.find(h => h.id === 'fuckingfast');
+    site(() => html('<meta name="title" content="c.rar"><p>Size - 1 MB | Downloads</p><script>window.open("https://cdn.ff.example/c.rar")</script>'));
+    const opened = await ff.resolve('https://fuckingfast.co/abcdefghijkl', {});
+    assert.deepEqual([opened.url, opened.filename, opened.size], ['https://cdn.ff.example/c.rar', 'c.rar', 1048576]);
+    site((u, o) => (o.method === 'POST' ? new Response('OK', { headers: { 'hx-redirect': 'https://cdn.ff.example/d.rar' } }) : html('hx-post="/f/abcdefghijkl/go"')));
+    assert.equal((await ff.resolve('https://fuckingfast.co/abcdefghijkl', {})).url, 'https://cdn.ff.example/d.rar');
+    posts = 0;
+    site((u, o) => {
+      if (o.method === 'POST') posts++;
+      return html('/f/abcdefghijkl/go <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script> turnstileSuccess: false');
+    });
+    await assert.rejects(ff.resolve('https://fuckingfast.co/abcdefghijkl', {}), err => err.browser);
+    assert.equal(posts, 0, 'nothing posted past the captcha');
+    site(() => html('Just a moment', 403, { 'cf-mitigated': 'challenge' }));
+    await assert.rejects(ff.resolve('https://fuckingfast.co/abcdefghijkl', {}), err => err.browser);
+    // Uploadhaven: hotlink protection is explained.
+    const uh = simpleHosts.find(h => h.id === 'uploadhaven');
+    site(() => html('<h1>Hotlink protection active</h1>'));
+    await assert.rejects(uh.resolve('https://uploadhaven.com/download/abc', {}), err => err.browser && /posted on/.test(err.message));
+  } finally {
+    globalThis.fetch = real;
+  }
+  // Page texts for the hosts with extra messages.
+  assert.equal(onefichier._test.freeWait('<p>Your requests are too fast</p>').wait, 300000);
+  assert.ok(onefichier._test.freeWait('<b>IP Locked</b>').hostWide);
+  assert.ok(onefichier._test.freeWait('<b>This file is protected</b>').permanent);
+  assert.equal(onefichier._test.freeWait('you must wait up to 12 minutes between each downloads').wait, 13 * 60000);
+  assert.equal(onefichier._test.freeWait('<p>nothing</p>'), null);
+  assert.equal(mediafire._test.linkFromPage('var kNO = "https://download9.mediafire.com/a/b.zip";'), 'https://download9.mediafire.com/a/b.zip');
+  assert.ok(gdrive._test.pageError('but your computer or network may be sending automated queries').browser);
+  assert.ok(gdrive._test.pageError('<p> Sorry, this file is infected with a virus</p>').permanent);
+  assert.deepEqual(buzz._test.pageInfo('https://buzzheavier.com/a', 200, '<meta name="title" content="e.zip">Size - 2 MB | Views - 3 <strong>SHA-1:</strong> <code>' + 'a'.repeat(40) + '</code>'), { filename: 'e.zip', size: 2097152, sha1: 'a'.repeat(40) });
+  assert.throws(() => buzz._test.pageInfo('https://buzzheavier.com/notfound', 200, ''), err => err.permanent);
+  ok('ported from JDownloader: XFS offline, waits, errors, forms and links; KrakenFiles, VikingFile, FuckingFast, Uploadhaven flows; extra host messages');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----

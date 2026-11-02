@@ -1,5 +1,7 @@
 // Google Drive: shared files and folders ("anyone with the link"). Big files show a virus-scan warning page first;
 // its form holds the confirm token. "Quota exceeded" means too many people downloaded it today: the queue waits.
+// Extra page messages from JDownloader 2 (GPL-3.0-or-later, JD-Team), jd/plugins/hoster/GoogleDrive.java r53450,
+// source mirror commit 6ab1aecd of 2026-11-02.
 const { getText, hostIn, decodeHtml, HostError, gone } = require('./common');
 
 const fileId = url => {
@@ -30,6 +32,9 @@ function confirmUrl(html) {
 }
 
 function pageError(html) {
+  if (/but your computer or network may be sending automated queries/i.test(html)) return new HostError('Google Drive is limiting your connection: solve its check in the window', { browser: true });
+  if (/>\s*Sorry, this file is infected with a virus/.test(html)) return new HostError('Google Drive: this file is infected with a virus', { permanent: true });
+  if (/<p class="error-caption"[^>]*>\s*Sorry, we are unable to retrieve this document/.test(html)) return gone('Google Drive');
   if (/Too many users have viewed or downloaded this file|download quota|quota exceeded/i.test(html)) {
     return new HostError('Google Drive: download quota for this file is used up for today', { wait: 60 * 60000 });
   }

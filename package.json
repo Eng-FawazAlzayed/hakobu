@@ -10,7 +10,7 @@
     "test": "node test/smoke.mjs && node test/feeds.mjs && node test/extract.mjs && node test/api.mjs && node test/hosts.mjs && node test/media.mjs && node test/stability.mjs && node test/special.mjs",
     "dist": "node build/dist.js"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dependencies": {
     "7zip-bin": "^5.2.0",
     "fetch-socks": "^1.3.3",
@@ -29,6 +29,8 @@
     "files": [
       "src/**/*",
       "package.json",
+      "LICENSE",
+      "CREDITS.md",
       "!node_modules/7zip-bin/mac/**",
       "!node_modules/7zip-bin/linux/**",
       "!node_modules/7zip-bin/win/ia32/**",

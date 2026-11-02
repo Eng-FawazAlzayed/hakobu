@@ -36,9 +36,9 @@ await registry.refresh(true);
 // ---- routing ----
 {
   const route = (settings, url) => new Manager({ statePath: null, settings, hosters: registry }).defaultRoute({ kind: 'http', source: url });
-  assert.equal(route({ torboxKey: 'k' }, 'https://vikingfile.com/f/abc'), 'torbox');
-  assert.equal(route({ realdebridToken: 'k', preferredDebrid: 'realdebrid' }, 'https://vikingfile.com/f/abc'), 'direct', 'RD cannot do VikingFile');
-  assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://vikingfile.com/f/abc'), 'torbox', 'falls back to the service that supports it');
+  assert.equal(route({ torboxKey: 'k' }, 'https://datavaults.co/file/1'), 'torbox');
+  assert.equal(route({ realdebridToken: 'k', preferredDebrid: 'realdebrid' }, 'https://datavaults.co/file/1'), 'direct', 'RD cannot do DataVaults');
+  assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://datavaults.co/file/1'), 'torbox', 'falls back to the service that supports it');
   assert.equal(route({ torboxKey: 'a', realdebridToken: 'b', preferredDebrid: 'realdebrid' }, 'https://rapidgator.net/file/x'), 'realdebrid');
   assert.equal(route({}, 'https://buzzheavier.com/xyz'), 'direct', 'BuzzHeavier works without debrid (built-in resolver)');
   assert.equal(route({}, 'https://example.org/file.zip'), 'direct');
@@ -46,7 +46,7 @@ await registry.refresh(true);
   assert.match(m.hosterAdvice('https://vikingfile.com/f/abc'), /TorBox/);
   assert.match(m.hosterAdvice('https://akirabox.com/x'), /None of your debrid services/);
   assert.equal(resolverFor('https://buzzheavier.com/abc')?.name, 'BuzzHeavier');
-  assert.equal(resolverFor('https://vikingfile.com/f/abc'), null);
+  assert.equal(resolverFor('https://datavaults.co/file/1'), null);
   ok('routing: each host goes to a configured service that supports it, BuzzHeavier resolves without debrid');
 }
 

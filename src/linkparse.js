@@ -6,7 +6,7 @@ const HOSTERS = [
   'keep2share.cc', 'fikper.com', 'mediafire.com', 'gofile.io', 'uptobox.com', 'filespace.com',
   'dailyuploads.net', 'usersdrive.com', 'clicknupload.click', 'hexload.com', 'pixeldrain.com',
   'vikingfile.com', 'vik1ngfile.site', 'akirabox.com', 'akirabox.to', 'buzzheavier.com', 'bzzhr.co', 'datavaults.co', 'fuckingfast.co',
-  'qiwi.gg', 'filecrypt.cc', 'megaup.net', 'send.cm', 'send.now', 'datanodes.to', 'krakenfiles.com', 'userscloud.com', 'filespayout.com',
+  'qiwi.gg', 'filecrypt.cc', 'megaup.net', 'send.cm', 'send.now', 'datanodes.to', 'krakenfiles.com', 'userscloud.com', 'filespayout.com', 'uploadhaven.com', 'tusfiles.com',
 ];
 
 function isHoster(url) {

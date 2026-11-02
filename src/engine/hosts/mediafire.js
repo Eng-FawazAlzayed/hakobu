@@ -1,4 +1,6 @@
 // MediaFire: file pages carry the direct link on their download button; folders are listed through MediaFire's public API.
+// Extra link patterns from JDownloader 2 (GPL-3.0-or-later, JD-Team), jd/plugins/hoster/MediafireCom.java r53182,
+// source mirror commit 6ab1aecd of 2026-11-02.
 const { getText, getJson, hostIn, decodeHtml, HostError, gone } = require('./common');
 
 const keyOf = url => {
@@ -9,7 +11,7 @@ const folderOf = url => /\/folder\/([a-z0-9]+)/i.exec(String(url))?.[1] || null;
 
 // The button's href, or its base64 "data-scrambled-url" on newer pages.
 function linkFromPage(html) {
-  let m = /id="downloadButton"[^>]*?href="(https?:\/\/[^"]+)"/i.exec(html) || /href="(https?:\/\/download\d*\.mediafire\.com\/[^"]+)"/i.exec(html);
+  let m = /kNO\s*=\s*"(https?:\/\/.*?)"/.exec(html) || /href\s*=\s*"(https?:\/\/[^"]+)"\s*id\s*=\s*"downloadButton"/i.exec(html) || /id="downloadButton"[^>]*?href="(https?:\/\/[^"]+)"/i.exec(html) || /href="(https?:\/\/download\d*\.mediafire\.com\/[^"]+)"/i.exec(html);
   if (m) return decodeHtml(m[1]);
   m = /data-scrambled-url="([^"]+)"/i.exec(html);
   if (m) {

@@ -77,3 +77,7 @@ Dev helper: `HAKOBU_PROFILE=<dir> HAKOBU_SHOT=<dir> npx electron .` renders demo
 - Built-in host modules cover MEGA, Pixeldrain, MediaFire, Google Drive, 1fichier, Send, DataNodes, KrakenFiles and BuzzHeavier without an account, plus Gofile, Rapidgator, Nitroflare and Keep2Share with your premium account. Other hosts go through debrid.
 - Click'n'Load can't start while JDownloader itself is running (both use port 9666). Settings shows this.
 - uTP is off (`utp-native` needs a native build). TCP and WebRTC peers work.
+
+## License
+
+GPL-3.0-or-later (see [LICENSE](LICENSE)). File host handling includes logic ported from JDownloader 2, also GPL; see [CREDITS.md](CREDITS.md).
