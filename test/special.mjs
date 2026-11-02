@@ -27,6 +27,7 @@ const simpleHosts = require('../src/engine/hosts/simple.js');
 const xfsHosts = require('../src/engine/hosts/xfs.js');
 const buzz = require('../src/engine/hosts/buzzheavier.js');
 const tools = require('../src/engine/tools.js');
+const crashGuard = require('../src/engine/crashguard.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobu-special-'));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -829,6 +830,94 @@ const newManager = (settings = {}) => {
   assert.deepEqual(buzz._test.pageInfo('https://buzzheavier.com/a', 200, '<meta name="title" content="e.zip">Size - 2 MB | Views - 3 <strong>SHA-1:</strong> <code>' + 'a'.repeat(40) + '</code>'), { filename: 'e.zip', size: 2097152, sha1: 'a'.repeat(40) });
   assert.throws(() => buzz._test.pageInfo('https://buzzheavier.com/notfound', 200, ''), err => err.permanent);
   ok('ported from JDownloader: XFS offline, waits, errors, forms and links; KrakenFiles, VikingFile, FuckingFast, Uploadhaven flows; extra host messages');
+}
+
+// ---- 11h. the crash that froze downloads, and connections that go silent ----
+{
+  // A server hangs up while the reader is behind: the old library threw an uncatchable error and left the reader hanging.
+  const undici = require('undici');
+  const body = Buffer.alloc(256 * 1024, 7);
+  const sock = net.createServer(s => {
+    s.on('error', () => {});
+    s.once('data', () => {
+      s.write('HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/octet-stream\r\n\r\n');
+      let n = 0;
+      const iv = setInterval(() => {
+        if (s.destroyed) return clearInterval(iv);
+        s.write(body);
+        if (++n >= 40) {
+          clearInterval(iv);
+          s.end();
+        }
+      }, 2);
+    });
+  });
+  await new Promise(r => sock.listen(0, '127.0.0.1', r));
+  const uncaught = [];
+  const onUncaught = e => uncaught.push(e);
+  process.on('uncaughtException', onUncaught);
+  const sizes = await Promise.all(
+    Array.from({ length: 12 }, async () => {
+      const r = await undici.fetch(`http://127.0.0.1:${sock.address().port}/`);
+      let got = 0;
+      for await (const c of r.body) {
+        got += c.length;
+        await wait(10 + Math.random() * 30);
+      }
+      return got;
+    })
+  );
+  process.off('uncaughtException', onUncaught);
+  sock.close();
+  assert.equal(uncaught.length, 0, 'no uncatchable error');
+  assert.ok(sizes.every(n => n === body.length * 40), 'every reader finished');
+  // The guard: network errors are logged without a dialog; anything else still shows.
+  const events = {};
+  const fatal = [];
+  const logFile = path.join(tmp, 'guard.log');
+  crashGuard.install({ log: logFile, showFatal: e => fatal.push(e), target: { on: (k, f) => (events[k] = f) } });
+  const bug = Object.assign(new Error('assert(!this.paused)'), { code: 'ERR_ASSERTION', stack: 'AssertionError\n  at Parser.finish (node:internal/deps/undici/undici:7433:9)' });
+  events.uncaughtException(bug);
+  events.uncaughtException(Object.assign(new Error('reset'), { code: 'ECONNRESET' }));
+  assert.equal(fatal.length, 0, 'no dialog for network errors');
+  events.uncaughtException(new TypeError('a real bug'));
+  assert.equal(fatal.length, 1, 'other errors are still shown');
+  events.unhandledRejection(new Error('later'));
+  assert.equal(fatal.length, 1);
+  assert.match(fs.readFileSync(logFile, 'utf8'), /Parser\.finish[\s\S]*a real bug[\s\S]*later/);
+  // A connection goes silent halfway: dropped, resumed from the same spot, file intact.
+  const data = crypto.randomBytes(3 * 1024 * 1024);
+  let requests = 0;
+  handlers['silent.bin'] = (req, res) => {
+    requests++;
+    const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range || '');
+    const start = m ? +m[1] : 0;
+    const end = m && m[2] ? +m[2] : data.length - 1;
+    res.writeHead(206, { 'content-range': `bytes ${start}-${end}/${data.length}`, 'content-length': end - start + 1 });
+    if (end === 0) return res.end(data.subarray(0, 1));
+    if (requests === 2) return res.write(data.subarray(start, start + 1024 * 1024)); // then nothing, connection left open
+    res.end(data.subarray(start, end + 1));
+  };
+  const it = { source: `${base}/silent.bin`, dir: path.join(tmp, 'silent') };
+  const task = new HttpTask(it, { limiter, connections: 1, taken: new Set() });
+  task.stallMs = 300;
+  task.retryBaseMs = 1;
+  const t0 = Date.now();
+  await task.run();
+  assert.ok(Date.now() - t0 < 8000, 'did not wait forever');
+  assert.ok(requests >= 3, 'asked again after going silent');
+  assert.equal(sha(fs.readFileSync(path.join(it.dir, it.filename))), sha(data));
+  assert.equal(it.downloaded, data.length, 'resumed, nothing counted twice');
+  // A slow disk or a speed limit is not a stall.
+  handlers['slowlimit.bin'] = (req, res) => serveRange(req, res, data);
+  const slow = { source: `${base}/slowlimit.bin`, dir: path.join(tmp, 'slowlimit') };
+  const before = (hits['slowlimit.bin'] = 0);
+  const task2 = new HttpTask(slow, { limiter: new RateLimiter(1024 * 1024), connections: 1, taken: new Set() });
+  task2.stallMs = 300;
+  await task2.run();
+  assert.equal(sha(fs.readFileSync(path.join(slow.dir, slow.filename))), sha(data));
+  assert.ok(hits['slowlimit.bin'] <= 2 + before, 'a speed limit does not count as a stall');
+  ok('server hangs up mid-download: no crash; network errors logged without a dialog; silent connections resume; speed limits are not stalls');
 }
 
 // ---- 12. accounts: premium-only hosts resolve only with an account; premium beats debrid ----

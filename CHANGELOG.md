@@ -49,6 +49,8 @@ Plugin sources, stability fixes, and JDownloader-style handling of file hosts an
 - TorBox: submitting a link can't hang (90 second limit, tried again after network problems), a dropped connection no longer ends a download TorBox is still working on, a download TorBox dropped or queued no longer waits forever, a finished job gets up to 2 minutes to list its files, and the error says what happened.
 - Browser hand-off also catches downloads served from a sub-domain or sent without a referrer (needs the Hakobu extension 0.3.1).
 - The "add the API key" hint no longer shows when the key is already set.
+- Fixed a crash ("assert(!this.paused)") when a server closed a connection during a download. Its dialog froze the app, stopping downloads and leaving a new window empty, with no downloads, plugins or keys showing. Network errors like it are now logged to hakobu.log.
+- A connection with no data for a minute is dropped and picked up from where it stopped, so a download can't sit frozen.
 - Installing yt-dlp, Deno and ffmpeg retries the version and checksum checks after a dropped connection, and "fetch failed" now names the host and the reason. If gyan.dev can't be reached, ffmpeg comes from the same builder's GitHub releases, still SHA-256 checked.
 
 ## [0.1.1] - 2026-10-31

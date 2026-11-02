@@ -11,6 +11,7 @@ const { ToolManager } = require('./engine/tools');
 const { mediaInfo } = require('./engine/media');
 const { HOSTS } = require('./engine/resolvers');
 const { HostWindows } = require('./hostwindow');
+const crashGuard = require('./engine/crashguard');
 const { decryptDlc } = require('./engine/crawler');
 const { execFile } = require('child_process');
 const crypto = require('crypto');
@@ -75,6 +76,10 @@ else {
   }
 }
 const SETUP_MODE = process.argv.includes('--setup-tools');
+crashGuard.install({
+  log: path.join(app.getPath('userData'), 'hakobu.log'),
+  showFatal: e => dialog.showErrorBox('A JavaScript error occurred in the main process', String(e?.stack || e)),
+});
 const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
 if (SETUP_MODE) app.setPath('userData', path.join(app.getPath('temp'), 'hakobu-setup-profile'));
 else if (!app.requestSingleInstanceLock()) app.quit();

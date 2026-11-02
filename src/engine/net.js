@@ -6,6 +6,13 @@
 // Without a matching "always" proxy the first route is a direct connection.
 const { hostOf } = require('./hosters');
 
+// Every fetch() in this process goes through this undici instead of the one built into Electron. Electron's copy crashes
+// the whole process ("assert(!this.paused)") when a server closes a connection while a download's disk writes are behind.
+{
+  const { Agent, setGlobalDispatcher } = require('undici');
+  setGlobalDispatcher(new Agent({ connect: { timeout: 30000 } })); // some connections take longer than the default 10 s
+}
+
 let proxies = [];
 const siteFetches = new Map(); // site -> fetch of the session a person solved its captcha or bot check in
 

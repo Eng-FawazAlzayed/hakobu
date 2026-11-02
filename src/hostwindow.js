@@ -48,7 +48,11 @@ class HostWindows {
       const headers = { ...(opts.headers || {}) };
       delete headers['User-Agent']; // keep the session's own: a site's clearance is tied to it
       delete headers.Cookie;
-      return ses.fetch(String(url), { ...opts, headers, credentials: 'include' });
+      // Chromium refuses some requests from code (ERR_BLOCKED_BY_CLIENT): the link's own cookie still works without it.
+      return ses.fetch(String(url), { ...opts, headers, credentials: 'include' }).catch(e => {
+        if (!/ERR_BLOCKED_BY_CLIENT/.test(e.message)) throw e;
+        return fetch(url, opts);
+      });
     });
   }
 

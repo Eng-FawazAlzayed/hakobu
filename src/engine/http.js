@@ -56,7 +56,9 @@ function filenameFromResponse(res, url) {
 // Thrown when a "download" link is really a web page (a file host's landing page, a login page, ...).
 class PageError extends Error {}
 
-async function probe(url, headers, signal, route = 0) {
+async function probe(url, headers, outer, route = 0) {
+  const limit = AbortSignal.timeout(60000);
+  const signal = outer ? AbortSignal.any([outer, limit]) : limit;
   let res = await netFetch(url, { headers: { 'User-Agent': UA, ...headers, Range: 'bytes=0-0' }, signal, route });
   if (res.status === 416) {
     // An empty file has no byte 0: ask again without a range.
@@ -148,6 +150,7 @@ class HttpTask {
     this.connections = connections;
     this.ac = new AbortController();
     this.retryBaseMs = 750; // first retry delay, doubled after each dead attempt (tests shorten it)
+    this.stallMs = 60000; // no data for this long: drop the connection and carry on from where it stopped
   }
 
   setItemLimiter(l) {
@@ -290,10 +293,18 @@ class HttpTask {
       const from = seg.start + seg.done;
       if (seg.end !== null && from > seg.end) return;
       const before = seg.done;
+      // Waiting on the network only: speed limits and slow disks don't count as a stall.
+      const attempt = new AbortController();
+      const stop = () => attempt.abort();
+      signal.addEventListener('abort', stop, { once: true });
+      let stallTimer = null;
+      const watch = () => (stallTimer = setTimeout(stop, this.stallMs));
+      const unwatch = () => clearTimeout(stallTimer);
       try {
         const h = { 'User-Agent': UA, ...this.headers };
         if (it.resumable) h.Range = `bytes=${from}-${seg.end ?? ''}`;
-        const res = await netFetch(this.url, { headers: h, signal, route: this.route });
+        watch();
+        const res = await netFetch(this.url, { headers: h, signal: attempt.signal, route: this.route });
         if (!(it.resumable ? res.status === 206 : res.ok)) {
           try {
             await res.body?.cancel(); // free the connection before retrying
@@ -309,6 +320,7 @@ class HttpTask {
           throw new Error(`HTTP ${res.status} ${res.statusText}`);
         }
         for await (const chunk of res.body) {
+          unwatch();
           await this.limiter.take(chunk.length, signal);
           if (this.itemLimiter) await this.itemLimiter.take(chunk.length, signal);
           let buf = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
@@ -324,6 +336,7 @@ class HttpTask {
           seg.done += buf.length;
           it.downloaded += buf.length;
           if (seg.end !== null && seg.start + seg.done > seg.end) break;
+          watch();
         }
         if (seg.end !== null && seg.start + seg.done <= seg.end) throw new Error('Connection closed early');
         return;
@@ -338,6 +351,9 @@ class HttpTask {
           seg.done = 0;
         }
         await sleep(Math.min(15000, this.retryBaseMs * 2 ** (failures - 1)), signal);
+      } finally {
+        unwatch();
+        signal.removeEventListener('abort', stop);
       }
     }
   }
