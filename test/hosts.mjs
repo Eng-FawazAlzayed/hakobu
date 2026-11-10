@@ -27,10 +27,9 @@ await registry.refresh(true);
   assert.deepEqual(p('https://vikingfile.com/f/abc123'), ['torbox']);
   assert.deepEqual(p('https://buzzheavier.com/xyz'), ['torbox']);
   assert.deepEqual(p('https://datavaults.co/file/1'), ['torbox']);
-  assert.deepEqual(p('https://akirabox.com/abc/file'), []);
   assert.ok(p('https://1fichier.com/?abc').includes('realdebrid'));
   assert.ok(fs.existsSync(path.join(tmp, 'hosters.json')), 'cached to disk');
-  ok(`live lists: TorBox ${d.torbox.length} hosts, Real-Debrid ${d.realdebrid.length}; VikingFile/BuzzHeavier/DataVaults → TorBox, AkiraBox → none`);
+  ok(`live lists: TorBox ${d.torbox.length} hosts, Real-Debrid ${d.realdebrid.length}; VikingFile/BuzzHeavier/DataVaults → TorBox`);
 }
 
 // ---- routing ----
@@ -44,7 +43,7 @@ await registry.refresh(true);
   assert.equal(route({}, 'https://example.org/file.zip'), 'direct');
   const m = new Manager({ statePath: null, settings: {}, hosters: registry });
   assert.match(m.hosterAdvice('https://vikingfile.com/f/abc'), /TorBox/);
-  assert.match(m.hosterAdvice('https://akirabox.com/x'), /None of your debrid services/);
+  assert.match(m.hosterAdvice('https://no-debrid-host.invalid/x'), /None of your debrid services/);
   assert.equal(resolverFor('https://buzzheavier.com/abc')?.name, 'BuzzHeavier');
   assert.equal(resolverFor('https://datavaults.co/file/1'), null);
   ok('routing: each host goes to a configured service that supports it, BuzzHeavier resolves without debrid');

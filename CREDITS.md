@@ -40,3 +40,11 @@ revision r49881 of that file (https://github.com/mirror/jdownloader, commit f274
 The logic was rewritten in JavaScript and changed to fit Hakobu. In particular, captchas go to a window where the person
 solves them, and code that works around bot checks was not ported. Only GPL source files were used, not the closed parts
 of JDownloader's official builds.
+
+## qBittorrent
+
+Hakobu's torrent side follows qBittorrent's behaviour and layout in several places: RSS rules ("a b" = AND, "a|b" = OR,
+wildcards), search plugins, fast-resume, the file picker, force-resume on a finished torrent, and category folders. These
+were written from scratch for Hakobu; no qBittorrent source code is included. Torrents run on WebTorrent.
+
+- Project: https://www.qbittorrent.org/

@@ -2,6 +2,12 @@
 
 All notable changes to Hakobu are listed here. Versions follow [semantic versioning](https://semver.org).
 
+## [0.2.1] - 2026-11-10
+
+### Changed
+- CREDITS.md now also notes where Hakobu follows qBittorrent's behaviour (no qBittorrent code is included).
+- Host test no longer expects AkiraBox to be unsupported, since TorBox now lists it.
+
 ## [0.2.0] - 2026-11-01
 
 Plugin sources, stability fixes, and JDownloader-style handling of file hosts and their special cases.
