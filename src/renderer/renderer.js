@@ -58,10 +58,10 @@ function view(it) {
     seeding: ['seeding', 'Seeding', 'seeding'],
     completed: ['completed', 'Completed', 'completed'],
     paused: ['paused', 'Paused', 'paused'],
-    error: ['error', it.needsBrowser ? 'Waiting for you' : 'Error', 'error'],
+    error: ['error', it.needsBrowser ? 'Needs a captcha' : 'Error', it.needsBrowser ? 'paused' : 'error'],
     retrying: ['downloading', 'Retrying soon', 'paused'],
     waiting: ['downloading', `Waiting ${duration(Math.max(0, ((it.waitUntil || 0) - Date.now()) / 1000))}`, 'paused'],
-    browser: ['downloading', 'Waiting for the browser', 'resolving'],
+    browser: ['downloading', 'Open in your browser', 'resolving'],
   };
   const [group, label, cls] = map[it.status] || ['paused', it.status, 'paused'];
   return { size: it.size, downloaded: it.downloaded, speed: it.speed, progress: it.progress || 0, group, label, cls };
@@ -84,8 +84,8 @@ function matches(it, f = filter) {
 
 function metaLine(it, v) {
   const parts = [];
-  if (it.status === 'browser') return `<span>Solve the captcha in the window and click its download button. Hakobu takes the download from there.</span>`;
-  if (it.needsBrowser && it.status === 'error') return `<span class="err" title="${esc(it.error)}">Waiting for you: press the globe, solve the captcha and click download.</span>`;
+  if (it.status === 'browser') return `<span>Click the download button on the host's page in your browser. Hakobu takes the download from there.</span>`;
+  if (it.needsBrowser && it.status === 'error') return `<span class="muted ell" title="${esc(it.error)}">${esc(it.error || 'This host wants a captcha')}. Add TorBox or Real-Debrid to skip it, or press the globe to finish it in your browser.</span>`;
   if (it.status === 'error') return `<span class="err" title="${esc(it.error)}">${esc(it.error)}</span>`;
   if (it.status === 'waiting') return `<span class="muted ell" title="${esc(it.error || '')}">${esc(it.error || 'Waiting for the host')}</span><span class="muted">Press play to try now</span>`;
   if (v.size) parts.push(v.group === 'completed' || v.group === 'seeding' ? bytes(v.size) : `${bytes(v.downloaded)} of ${bytes(v.size)}`);
@@ -145,8 +145,8 @@ function createRow(it) {
       <span class="status"></span>
       <span class="pct"></span>
       <div class="quick">
-        <button data-q="browser" class="hidden" title="Solve the captcha in a window">${icon('globe')}</button>
-        <button data-q="ext" class="hidden" title="Open in your own browser instead (needs the Hakobu extension)">${icon('link')}</button>
+        <button data-q="browser" class="hidden" title="Finish it in your browser (needs the Hakobu extension)">${icon('globe')}</button>
+        <button data-q="ext" class="hidden" title="Open the page in a Hakobu window instead">${icon('link')}</button>
         <button data-q="toggle"></button>
         <button data-q="open" title="Show in folder">${icon('folder')}</button>
         <button data-q="remove" title="Remove">${icon('x')}</button>
@@ -334,7 +334,7 @@ function notifyTransitions() {
     if (before && before !== it.status) {
       if (it.status === 'completed' && before !== 'seeding') toast('ok', 'Download complete', it.name);
       else if (it.status === 'seeding' && before === 'active') toast('ok', 'Torrent finished · seeding', it.name);
-      else if (it.status === 'error' && it.needsBrowser) toast('info', 'Waiting for you', `${it.name}: solve the captcha. Press the globe on it.`);
+      else if (it.status === 'error' && it.needsBrowser) {} // shown quietly on the row; nothing pops up
       else if (it.status === 'error') toast('err', 'Download failed', it.error || it.name);
       else if (it.status === 'handed-off') toast('info', `${PROVIDER[it.via]} is ready`, `${it.childIds?.length || 0} file(s) now downloading`);
     }
@@ -512,8 +512,8 @@ $('#list').addEventListener('click', async e => {
     const it = items.find(i => i.id === id);
     if (q === 'toggle') api.action([id], ['active', 'queued', 'resolving', 'seeding'].includes(it.status) ? 'pause' : 'resume');
     if (q === 'open') api.action([id], 'open');
-    if (q === 'browser') api.openHostWindow(id);
-    if (q === 'ext') api.openInBrowser([id]);
+    if (q === 'browser') api.openInBrowser([id]);
+    if (q === 'ext') api.openHostWindow(id);
     if (q === 'remove') api.action([id], 'remove');
     return;
   }
@@ -715,7 +715,8 @@ async function addToGrabber(entries, focus = true) {
     ensureTools();
   }
   const torrents = fresh.filter(e => e.kind === 'torrent');
-  if (torrents.length) TorrentDialog.enqueue(torrents);
+  // Torrents wait in the list like any link (the file picker is the layers button); the dialog only pops up if asked for.
+  if (torrents.length) settings.torrentDialog ? TorrentDialog.enqueue(torrents) : fetchTorrentInfo(torrents);
   const hashes = fresh.map(e => e.infoHash).filter(Boolean);
   if (hashes.length) {
     api.checkCached(hashes).then(cached => {
@@ -728,6 +729,32 @@ async function addToGrabber(entries, focus = true) {
   else if (http.length) mergeMirrors();
   const dups = fresh.filter(g => g.dup).length;
   if (dups) toast('info', `${dups} link${dups > 1 ? 's are' : ' is'} already in your downloads`, 'They were unticked. Tick them to download again.');
+}
+
+// Name, size and file list of grabbed torrents, in the background (magnets ask peers, which can take a while).
+async function fetchTorrentInfo(list) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(3, list.length) }, async () => {
+      while (next < list.length) {
+        const g = list[next++];
+        if (g.files?.length) continue;
+        g.check = { status: 'checking' };
+        renderGrab();
+        try {
+          const info = await api.torrentInfo({ source: g.source, torrentB64: g.torrentB64 });
+          if (!grab.includes(g) || g.files?.length) continue; // started, removed or picked meanwhile
+          const one = g.selectedFiles?.length === 1 && info.files[g.selectedFiles[0]];
+          Object.assign(g, { name: one ? one.path.split(/[\\/]/).pop() : info.name, size: info.size, infoHash: info.infoHash, torrentB64: info.torrentB64, files: info.files });
+          if (g.pkgAuto) g.pkg = g.name;
+          g.check = { status: 'online' };
+        } catch (err) {
+          g.check = { status: 'unknown', error: String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') };
+        }
+        renderGrab();
+      }
+    })
+  );
 }
 
 // Same file name and size on different hosts = mirrors (JDownloader): one download, the others are its fallbacks.
@@ -857,7 +884,7 @@ function checkChip(g) {
   if (s === 'page') return `<span class="lc lc-off" title="${esc(g.check.error || '')}">${icon('x')}web page</span>`;
   if (s === 'unsupported') return `<span class="lc lc-off" title="${esc(g.check.error || '')}">${icon('x')}unsupported host</span>`;
   if (s === 'protected') return `<span class="lc lc-unk" title="${esc(g.check.error || '')}">${icon('globe')}protected: open in browser</span>`;
-  if (s === 'browser') return `<span class="lc lc-unk" title="${esc(g.check.error || '')}">${icon('globe')}needs browser</span>`;
+  if (s === 'browser') return `<span class="lc lc-unk" title="${esc(g.check.error || '')}">${icon('globe')}captcha on download</span>`;
   if (s === 'hoster') {
     const names = (g.check.providers || []).map(p => (p === 'torbox' ? 'TorBox' : 'Real-Debrid'));
     const usable = g.via === 'torbox' || g.via === 'realdebrid';

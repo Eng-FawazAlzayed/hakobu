@@ -13,7 +13,7 @@ const { infoHashFromMagnet, isHoster } = require('../linkparse');
 const { sanitize, safeJoin } = require('../util');
 const { extractAll, isFirstVolume } = require('./extract');
 const { HosterRegistry, hostOf } = require('./hosters');
-const { resolverFor, moduleFor, setAccounts } = require('./resolvers');
+const { resolverFor, moduleFor, setAccounts, isSilentFree } = require('./resolvers');
 const { HostError } = require('./errors');
 const net = require('./net');
 const { hashFile, normalizeHash, expectedFromHashFiles } = require('./verify');
@@ -35,6 +35,8 @@ const DEFAULT_SETTINGS = {
   torboxKey: '',
   realdebridToken: '',
   clipboardMonitor: false,
+  torrentDialog: false, // qBittorrent's add dialog; off = torrents wait in LinkGrabber like any link
+  autoOpenBrowser: false,
   theme: 'system', // system | dark | oled | light | aero
   seedTimeMin: 0, // stop seeding after N minutes (0 = no limit)
   categories: {}, // name -> save path ('' = default folder)
@@ -189,12 +191,18 @@ class Manager extends EventEmitter {
   }
 
   // Decide how a grabbed link is downloaded when the user didn't pick explicitly.
-  // Your own account or a built-in host module first (direct); then a configured service that supports the host; otherwise direct.
+  // Like JDownloader's account order: your own premium account first, then a configured debrid service that supports
+  // the host (no waits, no captchas), then the built-in free module, otherwise direct. Free modules often end at a
+  // captcha, so they only go first when no service can fetch the file silently.
   defaultRoute(entry) {
     if (entry.kind === 'media') return 'ytdlp';
     if (entry.kind === 'torrent') return this.settings.torrentRoute;
     if (this.settings.httpRoute !== 'auto') return this.settings.httpRoute;
-    if (resolverFor(entry.source)) return 'direct'; // your own premium account, or a built-in module
+    const resolver = resolverFor(entry.source);
+    if (resolver?.premium || (resolver && isSilentFree(entry.source))) return 'direct'; // your own account, or a host with no captcha
+    const debrid = this.debridFor(entry.source);
+    if (debrid) return debrid;
+    if (resolver) return 'direct'; // a built-in module
     const configured = { torbox: !!this.settings.torboxKey, realdebrid: !!this.settings.realdebridToken };
     const supported = this.hosters.providersFor(entry.source).filter(p => configured[p.provider]);
     if (supported.length) {
@@ -202,6 +210,13 @@ class Manager extends EventEmitter {
       return (pref || supported.find(p => p.up) || supported[0]).provider;
     }
     return (entry.hoster || isHoster(entry.source)) && !this.hosters.list().updated ? this.configuredDebrid() || 'direct' : 'direct';
+  }
+
+  // A configured, working debrid service that supports this host (the preferred one first), or null.
+  debridFor(url) {
+    const configured = { torbox: !!this.settings.torboxKey, realdebrid: !!this.settings.realdebridToken };
+    const usable = this.hosters.providersFor(url).filter(p => configured[p.provider] && p.up);
+    return (usable.find(p => p.provider === this.settings.preferredDebrid) || usable[0])?.provider || null;
   }
 
   // Explains why a hoster link can't be downloaded with the current setup (or null).

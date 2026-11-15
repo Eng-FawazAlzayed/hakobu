@@ -55,14 +55,18 @@ async function checkLink(url, { registry, route, headers = {} } = {}) {
     }
   }
   const resolver = resolverFor(url);
+  // Going through TorBox / Real-Debrid: the host's own captcha or wait page doesn't matter, so the free download path
+  // is never run here. A module's availability check still helps (name, size, offline).
+  const viaDebrid = via === 'torbox' || via === 'realdebrid';
   // A built-in check answers for itself, whichever way the file will download.
   if (resolver && (via === 'direct' || !providers.length || resolver.mod.check)) {
     const host = resolver.name + (resolver.premium ? ' (premium)' : '');
     try {
       if (resolver.mod.check) {
         const c = await resolver.mod.check(url, { signal: AbortSignal.timeout(20000), account: resolver.account });
-        if (c) return { host, ...c, ...extra };
+        if (c && !(viaDebrid && ['browser', 'unknown'].includes(c.status))) return { host, ...c, ...extra };
       }
+      if (viaDebrid) throw Object.assign(new Error('debrid'), { viaDebrid: true });
       if (!resolver.premium) {
         const r = await resolver.resolve(url, AbortSignal.timeout(20000));
         if (r.filename && r.size) return { status: 'online', filename: r.filename, size: r.size, host, ...extra };
@@ -71,16 +75,19 @@ async function checkLink(url, { registry, route, headers = {} } = {}) {
       }
       return { status: 'online', host, ...extra }; // premium hosts are checked when they start (logins cost requests)
     } catch (e) {
-      return { status: statusOf(e), error: e.message, host, ...extra };
+      if (!viaDebrid) return { status: statusOf(e), error: e.message, host, ...extra };
+      // fall through to the debrid check below
     }
   }
   if (providers.includes('realdebrid')) {
     try {
-      return { ...(await checkHoster(url)), ...extra };
+      const r = await checkHoster(url);
+      if (!(viaDebrid && r.status === 'unknown')) return { ...r, ...extra };
     } catch (e) {
-      return { status: 'unknown', error: e.message, ...extra };
+      if (!viaDebrid) return { status: 'unknown', error: e.message, ...extra };
     }
   }
+  // Ready to go through a service: TorBox has no free check, so the link is confirmed when it starts.
   if (providers.length) return { status: 'hoster', host: registry.providersFor(url)[0].name, ...extra };
   if (isHoster(url)) {
     // A file host neither service lists: there is no way to get the file without its website (captchas, waits).

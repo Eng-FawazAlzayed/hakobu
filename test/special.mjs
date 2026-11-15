@@ -592,13 +592,17 @@ const newManager = (settings = {}) => {
   } finally {
     globalThis.fetch = real;
   }
-  // Direct first: the built-in module comes before a configured service.
+  // JDownloader order: a configured service that supports the host comes before a free module that can hit a captcha;
+  // captcha-free hosts (MEGA, Drive, MediaFire, Pixeldrain, BuzzHeavier) stay direct; a service that is down is skipped.
   const m = newManager({ torboxKey: 'k' });
-  m.hosters.data.torbox = [{ name: 'DataNodes', domains: ['datanodes.to'], up: true }];
-  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
+  m.hosters.data.torbox = [{ name: 'DataNodes', domains: ['datanodes.to'], up: true }, { name: 'Send', domains: ['send.now'], up: true }, { name: 'MediaFire', domains: ['mediafire.com'], up: true }, { name: 'KrakenFiles', domains: ['krakenfiles.com'], up: false }];
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'torbox');
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://send.now/abc' }), 'torbox');
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://www.mediafire.com/file/knnoovz75yk33xp/x.pdf/file' }), 'direct');
+  assert.equal(m.defaultRoute({ kind: 'http', source: 'https://krakenfiles.com/view/a/file.html' }), 'direct');
   assert.equal(newManager().defaultRoute({ kind: 'http', source: 'https://datanodes.to/abc/x.zip' }), 'direct');
   assert.ok(resolverFor('https://datanodes.to/abc/x.zip') && resolverFor('https://send.now/abc') && resolverFor('https://krakenfiles.com/view/a/file.html'));
-  ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; direct first');
+  ok('Send, DataNodes, KrakenFiles parsers and flows; captchas go to the browser; debrid before captcha hosts');
 }
 
 // ---- 11e. media tools: dropped connections while checking versions and checksums ----

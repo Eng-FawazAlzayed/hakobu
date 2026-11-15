@@ -53,4 +53,9 @@ function resolverFor(url) {
 
 const isFolderLink = url => !!moduleFor(url)?.isFolder?.(url);
 
-module.exports = { resolverFor, moduleFor, accountFor, setAccounts, isFolderLink, HOSTS, RESOLVERS: HOSTS };
+// Hosts whose free download needs no captcha, wait page or bot check: these stay direct even when a debrid service
+// supports them. Every other free module is only a fallback behind a configured debrid service.
+const SILENT_FREE = new Set(['mega', 'gdrive', 'mediafire', 'pixeldrain', 'buzzheavier']);
+const isSilentFree = url => SILENT_FREE.has(moduleFor(url)?.id);
+
+module.exports = { isSilentFree, resolverFor, moduleFor, accountFor, setAccounts, isFolderLink, HOSTS, RESOLVERS: HOSTS };
