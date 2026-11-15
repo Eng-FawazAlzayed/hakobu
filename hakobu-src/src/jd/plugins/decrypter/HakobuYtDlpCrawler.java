@@ -38,7 +38,9 @@ public class HakobuYtDlpCrawler extends PluginForDecrypt {
         try {
             info = YtDlp.probe(url);
         } catch (final java.io.IOException e) {
-            throw new PluginException(LinkStatus.ERROR_FILE_NOT_FOUND, e.getMessage());
+            /* Show the link as an offline row with yt-dlp's reason instead of silently dropping it. */
+            ret.add(createOfflinelink(url, null, e.getMessage()));
+            return ret;
         }
         final Object entries = info.get("entries");
         if ("playlist".equals(info.get("_type")) && entries instanceof List) {
@@ -51,9 +53,16 @@ public class HakobuYtDlpCrawler extends PluginForDecrypt {
                     continue;
                 }
                 final DownloadLink dl = createDownloadlink(HakobuYtDlp.wrap("https://www.youtube.com/watch?v=" + id));
+                dl.setProperty(jd.plugins.hoster.HakobuTorrent.PROPERTY_KIND, "video");
+                dl.setProperty(HakobuYtDlp.PROPERTY_THUMB, HakobuYtDlp.youtubeThumb(id.toString()));
+                final Object duration = e.get("duration");
+                if (duration instanceof Number) {
+                    dl.setProperty(HakobuYtDlp.PROPERTY_DURATION, ((Number) duration).longValue());
+                }
                 final Object title = e.get("title");
                 if (title != null) {
-                    dl.setName(HakobuYtDlp.safeName(title.toString()) + ".mp4");
+                    dl.setProperty(HakobuYtDlp.PROPERTY_TITLE, title.toString());
+                    HakobuYtDlp.setQuality(dl, HakobuYtDlp.quality(dl));
                 }
                 dl.setAvailable(true);
                 fp.add(dl);

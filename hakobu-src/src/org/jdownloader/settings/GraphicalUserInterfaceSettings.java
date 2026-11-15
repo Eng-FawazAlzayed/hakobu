@@ -932,7 +932,10 @@ public interface GraphicalUserInterfaceSettings extends ConfigInterface {
             if (Application.isHeadless()) {
                 return LookAndFeelType.JAVA_SYSTEM;
             } else {
-                if (Application.getRessourceURL("cfg/synthetica-license.key") != null && LookAndFeelType.DEFAULT.isAvailable()) {
+                if (LookAndFeelType.FLATLAF_DARK.isAvailable()) {
+                    /* Hakobu: dark by default, to match the Hakobu window. */
+                    return LookAndFeelType.FLATLAF_DARK;
+                } else if (Application.getRessourceURL("cfg/synthetica-license.key") != null && LookAndFeelType.DEFAULT.isAvailable()) {
                     return LookAndFeelType.DEFAULT;
                 } else if (LookAndFeelType.FLATLAF_LIGHT.isAvailable()) {
                     return LookAndFeelType.FLATLAF_LIGHT;
@@ -1638,7 +1641,8 @@ public interface GraphicalUserInterfaceSettings extends ConfigInterface {
     }
 
     @AboutConfig
-    @DefaultEnumValue("AUTO_VISIBLE")
+    /* Hakobu: no Contribute tab or button. */
+    @DefaultEnumValue("CUSTOM_HIDDEN")
     @ConfigEntryKeywords({ "donat", "contribut" })
     DonateButtonState getDonateButtonState();
 

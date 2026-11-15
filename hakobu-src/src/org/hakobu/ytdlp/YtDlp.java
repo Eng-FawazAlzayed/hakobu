@@ -121,20 +121,50 @@ public final class YtDlp {
      * counter is kept across streams.
      */
     public static void download(final String url, final File target, final Progress progress, final AtomicBoolean stop) throws IOException, InterruptedException {
+        download(url, target, "best", progress, stop);
+    }
+
+    /** True for the audio-only choice; the file is then an .m4a. */
+    public static boolean isAudio(final String quality) {
+        return "audio".equals(quality);
+    }
+
+    /** yt-dlp format selector for a Hakobu quality choice: best, a height such as 1080, or audio. */
+    public static String formatFor(final String quality) {
+        if (quality == null || "best".equals(quality)) {
+            return "bv*+ba/b";
+        }
+        if (isAudio(quality)) {
+            return "ba[ext=m4a]/ba/b";
+        }
+        if (quality.matches("\\d{3,4}")) {
+            return "bv*[height<=" + quality + "]+ba/b[height<=" + quality + "]/bv*+ba/b";
+        }
+        return "bv*+ba/b";
+    }
+
+    public static void download(final String url, final File target, final String quality, final Progress progress, final AtomicBoolean stop) throws IOException, InterruptedException {
         final List<String> cmd = base();
         cmd.add("--newline");
         cmd.add("--no-playlist");
         cmd.add("-f");
-        cmd.add("bv*+ba/b");
-        cmd.add("--merge-output-format");
-        cmd.add("mp4");
-        cmd.add("--remux-video");
-        cmd.add("mp4");
+        cmd.add(formatFor(quality));
+        final String ext = isAudio(quality) ? "m4a" : "mp4";
+        if (isAudio(quality)) {
+            cmd.add("-x");
+            cmd.add("--audio-format");
+            cmd.add("m4a");
+        } else {
+            cmd.add("--merge-output-format");
+            cmd.add("mp4");
+            cmd.add("--remux-video");
+            cmd.add("mp4");
+        }
         cmd.add("--progress-template");
         cmd.add("download:HKP %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s");
         cmd.add("-o");
         final String path = target.getAbsolutePath();
-        cmd.add(path.toLowerCase().endsWith(".mp4") ? path.substring(0, path.length() - 4) + ".%(ext)s" : path);
+        cmd.add(path.toLowerCase().endsWith("." + ext) ? path.substring(0, path.length() - ext.length() - 1) + ".%(ext)s" : path);
         cmd.add(url);
         final Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
         final StringBuilder log = new StringBuilder();
