@@ -1,0 +1,1709 @@
+package org.jdownloader.settings;
+
+import java.awt.event.KeyEvent;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.HashMap;
+import java.util.Map;
+
+import jd.controlling.downloadcontroller.IfFilenameTooLongDialog.IfFilenameTooLongAction;
+
+import org.appwork.storage.Storable;
+import org.appwork.storage.config.ConfigInterface;
+import org.appwork.storage.config.annotations.AboutConfig;
+import org.appwork.storage.config.annotations.AbstractCustomValueGetter;
+import org.appwork.storage.config.annotations.ConfigEntryKeywords;
+import org.appwork.storage.config.annotations.CustomValueGetter;
+import org.appwork.storage.config.annotations.DefaultBooleanValue;
+import org.appwork.storage.config.annotations.DefaultEnumValue;
+import org.appwork.storage.config.annotations.DefaultFactory;
+import org.appwork.storage.config.annotations.DefaultIntArrayValue;
+import org.appwork.storage.config.annotations.DefaultIntValue;
+import org.appwork.storage.config.annotations.DefaultLongValue;
+import org.appwork.storage.config.annotations.DefaultOnNull;
+import org.appwork.storage.config.annotations.DefaultStringValue;
+import org.appwork.storage.config.annotations.DescriptionForConfigEntry;
+import org.appwork.storage.config.annotations.EnumLabel;
+import org.appwork.storage.config.annotations.LabelInterface;
+import org.appwork.storage.config.annotations.RequiresRestart;
+import org.appwork.storage.config.annotations.SpinnerValidator;
+import org.appwork.storage.config.annotations.ValidatorFactory;
+import org.appwork.storage.config.defaults.AbstractDefaultFactory;
+import org.appwork.storage.config.handler.KeyHandler;
+import org.appwork.storage.config.validators.DefaultSimpleDateValidator;
+import org.appwork.utils.Application;
+import org.appwork.utils.JVMVersion;
+import org.appwork.utils.StringUtils;
+import org.appwork.utils.locale._AWU;
+import org.appwork.utils.os.CrossSystem;
+import org.appwork.utils.swing.dialog.View;
+import org.appwork.utils.swing.windowmanager.WindowManager.FrameState;
+import org.jdownloader.gui.translate._GUI;
+import org.jdownloader.gui.views.components.LinktablesSearchCategory;
+import org.jdownloader.settings.staticreferences.CFG_GENERAL;
+import org.jdownloader.translate._JDT;
+import org.jdownloader.updatev2.gui.LookAndFeelType;
+
+public interface GraphicalUserInterfaceSettings extends ConfigInterface {
+    public static enum DownloadFolderChooserDialogSubfolder {
+        AUTO,
+        ENABLED,
+        DISABLED
+    }
+
+    @DefaultEnumValue("AUTO")
+    @AboutConfig
+    DownloadFolderChooserDialogSubfolder getDownloadFolderChooserDialogSubfolder();
+
+    void setDownloadFolderChooserDialogSubfolder(DownloadFolderChooserDialogSubfolder value);
+
+    public static class CustomIsConfigViewVisible extends AbstractCustomValueGetter<Boolean> {
+        @Override
+        public Boolean getValue(KeyHandler<Boolean> keyHandler, Boolean value) {
+            if (CrossSystem.isMac() && !JVMVersion.isMinimum(JVMVersion.JAVA_1_7)) {
+                return Boolean.TRUE;
+            } else {
+                return value;
+            }
+        }
+    }
+
+    /**
+     * How many ms the speedmeter shall show/record. Please note that big Timeframes and high fps values may cause high CPU usage
+     *
+     * @return
+     */
+    @AboutConfig
+    @DefaultIntValue(30000)
+    int getSpeedMeterTimeFrame();
+
+    void setSpeedMeterTimeFrame(int i);
+
+    /**
+     * How many refreshes and datasamples the speedmeter uses. Please note that big Timeframes and high fps values may cause high CPU usage
+     *
+     * @return
+     */
+    @AboutConfig
+    @DefaultIntValue(4)
+    @SpinnerValidator(min = 1, max = 10, step = 1)
+    int getSpeedMeterFramesPerSecond();
+
+    void setSpeedMeterFramesPerSecond(int i);
+
+    String getActivePluginConfigPanel();
+
+    String getActiveConfigPanel();
+
+    String getActiveMyJDownloaderPanel();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Captcha Dialog Image scale Faktor in %")
+    @DefaultIntValue(100)
+    @SpinnerValidator(min = 50, max = 500, step = 10)
+    int getCaptchaScaleFactor();
+
+    @DefaultIntValue(20000)
+    @AboutConfig
+    int getDialogDefaultTimeoutInMS();
+
+    @DefaultEnumValue("ALL")
+    org.jdownloader.gui.views.downloads.View getDownloadView();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Refreshrate in ms for the DownloadView")
+    @DefaultLongValue(500)
+    @SpinnerValidator(min = 50, max = 5000, step = 25)
+    @RequiresRestart("A JDownloader Restart is Required")
+    public long getDownloadViewRefresh();
+
+    FrameStatus getLastFrameStatus();
+
+    @AboutConfig
+    @DefaultEnumValue("SKIP_FILE")
+    IfFileExistsAction getLastIfFileExists();
+
+    @AboutConfig
+    @DefaultEnumValue("AUTO_RENAME")
+    IfFilenameTooLongAction getLastIfFilenameTooLong();
+
+    void setLastIfFilenameTooLong(IfFilenameTooLongAction value);
+
+    @AboutConfig
+    public String getPassword();
+
+    LinktablesSearchCategory getSelectedDownloadSearchCategory();
+
+    LinktablesSearchCategory getSelectedLinkgrabberSearchCategory();
+
+    // @AboutConfig
+    // @Description("Enable/Disable the Linkgrabber Sidebar")
+    // @DefaultBooleanValue(true)
+    // @RequiresRestart("A JDownloader Restart is Required")
+    // boolean isDownloadViewSidebarEnabled();
+    //
+    // @AboutConfig
+    // @Description("Enable/Disable the DownloadView Sidebar QuicktoggleButton")
+    // @DefaultBooleanValue(true)
+    // @RequiresRestart("A JDownloader Restart is Required")
+    // boolean isDownloadViewSidebarToggleButtonEnabled();
+    //
+    // @DefaultBooleanValue(true)
+    // @RequiresRestart("A JDownloader Restart is Required")
+    // boolean isDownloadViewSidebarVisible();
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isBalloonNotificationEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Enable/disable Clipboard monitoring")
+    @DefaultBooleanValue(true)
+    boolean isClipboardMonitored();
+
+    public static enum CLIPBOARD_SKIP_MODE {
+        ON_STARTUP,
+        ON_ENABLE,
+        NEVER
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("ON_STARTUP")
+    @DescriptionForConfigEntry("ON_STARTUP: Skip the first clipboard content on startup. ON_ENABLE: Skip the first clipboard content when enabling clipboard observation. NEVER: Always process clipboard content immediately, both on startup and when clipboard observation is enabled.")
+    CLIPBOARD_SKIP_MODE getClipboardSkipMode();
+
+    void setClipboardSkipMode(CLIPBOARD_SKIP_MODE mode);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("Enable/disable HTML-Flavor(Browser selection) Clipboard monitoring")
+    @RequiresRestart("A JDownloader Restart is Required")
+    boolean isClipboardMonitorProcessHTMLFlavor();
+
+    void setClipboardMonitorProcessHTMLFlavor(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Blacklist(regex) of processes to ignore Clipboard monitoring")
+    @RequiresRestart("A JDownloader Restart is Required")
+    String[] getClipboardProcessBlacklist();
+
+    void setClipboardProcessBlacklist(String[] blackList);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("If disabled, The Hostercolumn will show gray disabled icons if the link is disabled")
+    boolean isColoredIconsForDisabledHosterColumnEnabled();
+
+    @DefaultBooleanValue(false)
+    @CustomValueGetter(CustomIsConfigViewVisible.class)
+    boolean isConfigViewVisible();
+
+    @DefaultBooleanValue(false)
+    boolean isMyJDownloaderViewVisible();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Highlight Table in Downloadview if table is filtered")
+    @DefaultBooleanValue(true)
+    @RequiresRestart("A JDownloader Restart is Required")
+    boolean isFilterHighlightEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Enable/Disable the DownloadPanel Overview panel ")
+    @DefaultBooleanValue(true)
+    boolean isDownloadTabOverviewVisible();
+
+    void setDownloadTabOverviewVisible(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Enable/Disable the Linkgrabber Overview panel ")
+    @DefaultBooleanValue(true)
+    boolean isLinkgrabberTabOverviewVisible();
+
+    void setLinkgrabberTabOverviewVisible(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Enable/Disable the Linkgrabber properties panel ")
+    @DefaultBooleanValue(true)
+    boolean isLinkgrabberTabPropertiesPanelVisible();
+
+    void setLinkgrabberTabPropertiesPanelVisible(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Enable/Disable the Downloads properties panel ")
+    @DefaultBooleanValue(true)
+    boolean isDownloadsTabPropertiesPanelVisible();
+
+    void setDownloadsTabPropertiesPanelVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelTotalInfoVisible();
+
+    void setOverviewPanelTotalInfoVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelVisibleOnlyInfoVisible();
+
+    void setOverviewPanelVisibleOnlyInfoVisible(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Include disabled links in the size calculation")
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberIncludeDisabledLinks();
+
+    void setOverviewPanelLinkgrabberIncludeDisabledLinks(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("Include disabled links in the totalbytes and loadedbytes calculation")
+    boolean isOverviewPanelDownloadPanelIncludeDisabledLinks();
+
+    void setOverviewPanelDownloadPanelIncludeDisabledLinks(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("Count disabled links normally in the 'selected' column of the download overview when the selection consists exclusively of disabled links, even if 'include disabled links' is turned off")
+    boolean isOverviewPanelDownloadPanelForceIncludeSelectedIfAllDisabled();
+
+    void setOverviewPanelDownloadPanelForceIncludeSelectedIfAllDisabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isDownloadPanelOverviewSettingsVisible();
+
+    void setDownloadPanelOverviewSettingsVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelSelectedInfoVisible();
+
+    void setOverviewPanelSelectedInfoVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelSmartInfoVisible();
+
+    void setOverviewPanelSmartInfoVisible(boolean b);
+
+    @DefaultBooleanValue(true)
+    @AboutConfig
+    boolean isLinkgrabberSidebarVisible();
+
+    @DefaultBooleanValue(false)
+    @AboutConfig
+    @DescriptionForConfigEntry("If true, you can easily delete selected/matching filter with delete hotkey")
+    boolean isLinkgrabberSidebarDeleteHotkeyEnabled();
+
+    void setLinkgrabberSidebarDeleteHotkeyEnabled(boolean b);
+
+    @DefaultBooleanValue(false)
+    @AboutConfig
+    public boolean isPasswordProtectionEnabled();
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("If true, ETAColumn will show Premium Alerts in Free Download mode if JD thinks Premium would be better currently.")
+    boolean isPremiumAlertETAColumnEnabled();
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("If true, SpeedColumn will show Premium Alerts in Free Download mode if JD thinks Premium would be better currently.")
+    boolean isPremiumAlertSpeedColumnEnabled();
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("If true, TaskColumn will show Premium Alerts in Free Download mode if JD thinks Premium would be better currently.")
+    boolean isPremiumAlertTaskColumnEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Set to true of you want jd to remember the latest selected download view")
+    @DefaultBooleanValue(false)
+    boolean isSaveDownloadViewCrossSessionEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Highlight Column in Downloadview if table is not in downloadsortorder")
+    @DefaultBooleanValue(true)
+    @RequiresRestart("A JDownloader Restart is Required")
+    boolean isSortColumnHighlightEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("If false, Most of the Tooltips will be disabled")
+    @DefaultBooleanValue(true)
+    boolean isTooltipEnabled();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("If true, hostcolumn will also show full hostname")
+    @DefaultBooleanValue(false)
+    boolean isShowFullHostname();
+
+    @AboutConfig
+    @DescriptionForConfigEntry("If true, java will try to use D3D for graphics")
+    @DefaultBooleanValue(false)
+    @RequiresRestart("A JDownloader Restart is Required")
+    boolean isUseD3D();
+
+    public void setUseD3D(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isSpeedMeterVisible();
+
+    public void setSpeedMeterVisible(boolean b);
+
+    public void setShowFullHostname(boolean b);
+
+    // void setDownloadViewSidebarEnabled(boolean b);
+    //
+    // void setDownloadViewSidebarToggleButtonEnabled(boolean b);
+    //
+    // void setDownloadViewSidebarVisible(boolean b);
+    void setActiveConfigPanel(String name);
+
+    void setActiveMyJDownloaderPanel(String name);
+
+    void setActivePluginConfigPanel(String name);
+
+    // void setActiveCESConfigPanel(String name);
+    // String getActiveCESConfigPanel();
+    void setBalloonNotificationEnabled(boolean b);
+
+    void setCaptchaScaleFactor(int b);
+
+    void setClipboardMonitored(boolean b);
+
+    void setColoredIconsForDisabledHosterColumnEnabled(boolean b);
+
+    void setMyJDownloaderViewVisible(boolean b);
+
+    void setConfigViewVisible(boolean b);
+
+    void setDialogDefaultTimeoutInMS(int ms);
+
+    void setDownloadView(org.jdownloader.gui.views.downloads.View view);
+
+    public void setDownloadViewRefresh(long t);
+
+    void setFilterHighlightEnabled(boolean b);
+
+    public void setLastFrameStatus(FrameStatus status);
+
+    void setLastIfFileExists(IfFileExistsAction value);
+
+    void setLinkgrabberSidebarVisible(boolean b);
+
+    public void setPassword(String password);
+
+    public void setPasswordProtectionEnabled(boolean b);
+
+    void setPremiumAlertSpeedColumnEnabled(boolean b);
+
+    void setPremiumAlertETAColumnEnabled(boolean b);
+
+    void setPremiumAlertTaskColumnEnabled(boolean b);
+
+    void setSaveDownloadViewCrossSessionEnabled(boolean b);
+
+    @DefaultEnumValue("FILENAME")
+    void setSelectedDownloadSearchCategory(LinktablesSearchCategory selectedCategory);
+
+    @DefaultEnumValue("FILENAME")
+    void setSelectedLinkgrabberSearchCategory(LinktablesSearchCategory selectedCategory);
+
+    void setSortColumnHighlightEnabled(boolean b);
+
+    void setPresentationModeEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("Hides sensitive data in GUI, mostly in username columns. This can be helpful for making screenshots for tutorials without worrying about exposing private data.")
+    boolean isPresentationModeEnabled();
+
+    @DescriptionForConfigEntry("Text that is displayed in string columns (mostly username columns) when presentation mode is active.")
+    @DefaultStringValue("***HIDDEN_DUE_TO_ENABLED_PRESENTATION_MODE***")
+    @AboutConfig
+    public String getPresentationModeText();
+
+    public void setPresentationModeText(String text);
+
+    void setTooltipEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultIntValue(2000)
+    @SpinnerValidator(min = 0, max = 5000, step = 50)
+    @RequiresRestart("A JDownloader Restart is Required")
+    int getTooltipDelay();
+
+    void setTooltipDelay(int t);
+
+    @DefaultBooleanValue(true)
+    @AboutConfig
+    boolean isCaptchaDialogUniquePositionByHosterEnabled();
+
+    void setCaptchaDialogUniquePositionByHosterEnabled(boolean b);
+
+    @DefaultEnumValue("DETAILS")
+    @AboutConfig
+    void setFileChooserView(View view);
+
+    View getFileChooserView();
+
+    @DefaultBooleanValue(false)
+    @AboutConfig
+    @DescriptionForConfigEntry("Hide the package in case it only contains one child")
+    boolean isHideSingleChildPackages();
+
+    void setHideSingleChildPackages(boolean b);
+
+    @DefaultBooleanValue(true)
+    @AboutConfig
+    @RequiresRestart("A JDownloader Restart is Required")
+    boolean isFileCountInSizeColumnVisible();
+
+    void setFileCountInSizeColumnVisible(boolean b);
+
+    @AboutConfig
+    @RequiresRestart("A JDownloader Restart is Required")
+    @DefaultEnumValue("MiB")
+    @DefaultOnNull
+    SPEEDUNIT getMaxSpeedUnit();
+
+    void setMaxSpeedUnit(SPEEDUNIT speedUnit);
+
+    public static enum SPEEDUNIT {
+        TiB(1024 * 1024 * 1024 * 1024l, true),
+        TiBit(1024 * 1024 * 1024 * 1024l, true),
+        TB(1000 * 1000 * 1000 * 1000l),
+        TBit(1000 * 1000 * 1000 * 1000l),
+        GiB(1024 * 1024 * 1024l, true),
+        GiBit(1024 * 1024 * 1024l, true),
+        GB(1000 * 1000 * 1000l),
+        GBit(1000 * 1000 * 1000l),
+        MiB(1024 * 1024l, true),
+        MiBit(1024 * 1024l, true),
+        MB(1000 * 1000l),
+        MBit(1000 * 1000l),
+        KiB(1024, true),
+        KiBit(1024, true),
+        KB(1000l),
+        KBit(1000l),
+        B(1),
+        Bit(1);
+
+        private final long    divider;
+        private final boolean iecPrefix;
+        private final boolean isBit;
+
+        public final boolean isBit() {
+            return isBit;
+        }
+
+        public final boolean isIECPrefix() {
+            return iecPrefix;
+        }
+
+        public final long getDivider() {
+            return divider;
+        }
+
+        private SPEEDUNIT(long divider, boolean isIECPrefix) {
+            this.divider = divider;
+            this.iecPrefix = isIECPrefix;
+            this.isBit = name().endsWith("it");
+        }
+
+        private SPEEDUNIT(long divider) {
+            this(divider, false);
+        }
+
+        public long to(SPEEDUNIT dest, long value) {
+            if (value == 0) {
+                return 0;
+            } else {
+                final long ret = (value * getDivider()) / dest.getDivider();
+                return ret;
+            }
+        }
+
+        public static final String formatValue(SPEEDUNIT maxSizeUnit, final long speed) {
+            return formatValue(maxSizeUnit, new DecimalFormat(), speed);
+        }
+
+        public static final String formatValue(SPEEDUNIT maxSizeUnit, final DecimalFormat formatter, final long speed) {
+            return formatValue(maxSizeUnit, (NumberFormat) formatter, speed);
+        }
+
+        public static final String formatValue(final SPEEDUNIT maxSpeedUnit, final NumberFormat formatter, long speed) {
+            final boolean isIECPrefix = maxSpeedUnit.isIECPrefix();
+            final boolean isBit = maxSpeedUnit.isBit();
+            if (isBit) {
+                speed = speed * 8;
+            }
+            switch (maxSpeedUnit) {
+            case TiB:
+            case TiBit:
+                if (speed >= TiB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) TiB.getDivider()).concat(" TiBit");
+                    } else {
+                        return formatter.format(speed / (double) TiB.getDivider()).concat(" TiB");
+                    }
+                }
+            case TB:
+            case TBit:
+                if (!isIECPrefix && speed >= TB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) TB.getDivider()).concat(" TBit");
+                    } else {
+                        return formatter.format(speed / (double) TB.getDivider()).concat(" TB");
+                    }
+                }
+            case GiB:
+            case GiBit:
+                if (isIECPrefix && speed >= GiB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) GiB.getDivider()).concat(" GiBit");
+                    } else {
+                        return formatter.format(speed / (double) GiB.getDivider()).concat(" GiB");
+                    }
+                }
+            case GB:
+            case GBit:
+                if (!isIECPrefix && speed >= GB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) GB.getDivider()).concat(" GBit");
+                    } else {
+                        return formatter.format(speed / (double) GB.getDivider()).concat(" GB");
+                    }
+                }
+            case MiB:
+            case MiBit:
+                if (isIECPrefix && speed >= MiB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) MiB.getDivider()).concat(" MiBit");
+                    } else {
+                        return formatter.format(speed / (double) MiB.getDivider()).concat(" MiB");
+                    }
+                }
+            case MB:
+            case MBit:
+                if (!isIECPrefix && speed >= MB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) MB.getDivider()).concat(" MBit");
+                    } else {
+                        return formatter.format(speed / (double) MB.getDivider()).concat(" MB");
+                    }
+                }
+            case KiB:
+            case KiBit:
+                if (isIECPrefix && speed >= KiB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) KiB.getDivider()).concat(" KiBit");
+                    } else {
+                        return formatter.format(speed / (double) KiB.getDivider()).concat(" KiB");
+                    }
+                }
+            case KB:
+            case KBit:
+                if (!isIECPrefix && speed >= KB.getDivider()) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) KB.getDivider()).concat(" KBit");
+                    } else {
+                        return formatter.format(speed / (double) KB.getDivider()).concat(" KB");
+                    }
+                }
+            default:
+                if (speed > 0) {
+                    if (isBit) {
+                        return formatter.format(speed / (double) B.getDivider()).concat(" Bit");
+                    } else {
+                        return formatter.format(speed / (double) B.getDivider()).concat(" Byte");
+                    }
+                } else if (speed < 0) {
+                    /*
+                     * Speeds are never meant to be negative, so - unlike SIZEUNIT.formatValue - a negative value is treated as invalid and
+                     * displayed as "~" instead of being formatted as an absolute value.
+                     */
+                    return "~";
+                } else {
+                    if (isBit) {
+                        return formatter.format(0).concat(" Bit");
+                    } else {
+                        return formatter.format(0).concat(" Byte");
+                    }
+                }
+            }
+        }
+    }
+
+    public static interface SizeUnitInterface {
+        public boolean isIECPrefix();
+
+        public long getDivider();
+
+        public SIZEUNIT getUnit();
+
+        public boolean allowNegative();
+
+        public SizeUnitInterface toNonNegativeUnit();
+
+        public String getNegativeString();
+
+        public SizeUnitInterface toNonNegativeUnit(String String);
+    };
+
+    public static enum SIZEUNIT implements SizeUnitInterface {
+        TiB(1024 * 1024 * 1024 * 1024l, true),
+        TB(1000 * 1000 * 1000 * 1000l),
+        GiB(1024 * 1024 * 1024l, true),
+        GB(1000 * 1000 * 1000l),
+        MiB(1024 * 1024l, true),
+        MB(1000 * 1000l),
+        KiB(1024, true),
+        KB(1000l),
+        B(1);
+
+        private final long    divider;
+        private final boolean iecPrefix;
+
+        public final boolean isIECPrefix() {
+            return iecPrefix;
+        }
+
+        public final SIZEUNIT getUnit() {
+            return this;
+        }
+
+        public final long getDivider() {
+            return divider;
+        }
+
+        private SIZEUNIT(long divider, boolean isIECPrefix) {
+            this.divider = divider;
+            this.iecPrefix = isIECPrefix;
+        }
+
+        private SIZEUNIT(long divider) {
+            this(divider, false);
+        }
+
+        public long to(SizeUnitInterface dest, long value) {
+            if (value == 0) {
+                return 0;
+            } else {
+                final long ret = (value * getDivider()) / dest.getDivider();
+                return ret;
+            }
+        }
+
+        @Deprecated
+        public static final String formatValue(SIZEUNIT maxSizeUnit, final long fileSize) {
+            return formatValue((SizeUnitInterface) maxSizeUnit, fileSize);
+        }
+
+        public static final String formatValue(SizeUnitInterface maxSizeUnit, final long fileSize) {
+            return formatValue(maxSizeUnit, new DecimalFormat(), fileSize);
+        }
+
+        @Deprecated
+        public static final String formatValue(SIZEUNIT maxSizeUnit, final DecimalFormat formatter, final long fileSize) {
+            return formatValue((SizeUnitInterface) maxSizeUnit, (NumberFormat) formatter, fileSize);
+        }
+
+        public static final String formatValue(SizeUnitInterface maxSizeUnit, final DecimalFormat formatter, final long fileSize) {
+            return formatValue(maxSizeUnit, (NumberFormat) formatter, fileSize);
+        }
+
+        @Deprecated
+        public static final String formatValue(final SIZEUNIT maxSizeUnit, final NumberFormat formatter, final long fileSize) {
+            return formatValue((SizeUnitInterface) maxSizeUnit, formatter, fileSize);
+        }
+
+        public static final String formatValue(final SizeUnitInterface maxSizeUnit, final NumberFormat formatter, final long fileSize) {
+            if (!maxSizeUnit.allowNegative() && fileSize < 0) {
+                return maxSizeUnit.getNegativeString();
+            }
+            final long fileSizeAbs = Math.abs(fileSize);
+            final boolean isIECPrefix = maxSizeUnit.isIECPrefix();
+            switch (maxSizeUnit.getUnit()) {
+            case TiB:
+                if (fileSizeAbs >= TiB.getDivider()) {
+                    return _AWU.T.literally_tebibyte(formatter.format(fileSize / (double) TiB.getDivider()));
+                }
+            case TB:
+                if (!isIECPrefix && fileSizeAbs >= TB.getDivider()) {
+                    return formatter.format(fileSize / (double) TB.getDivider()).concat(" TB");
+                }
+            case GiB:
+                if (isIECPrefix && fileSizeAbs >= GiB.getDivider()) {
+                    return _AWU.T.literally_gibibyte(formatter.format(fileSize / (double) GiB.getDivider()));
+                }
+            case GB:
+                if (!isIECPrefix && fileSizeAbs >= GB.getDivider()) {
+                    return formatter.format(fileSize / (double) GB.getDivider()).concat(" GB");
+                }
+            case MiB:
+                if (isIECPrefix && fileSizeAbs >= MiB.getDivider()) {
+                    return _AWU.T.literally_mebibyte(formatter.format(fileSize / (double) MiB.getDivider()));
+                }
+            case MB:
+                if (!isIECPrefix && fileSizeAbs >= MB.getDivider()) {
+                    return formatter.format(fileSize / (double) MB.getDivider()).concat(" MB");
+                }
+            case KiB:
+                if (isIECPrefix && fileSizeAbs >= KiB.getDivider()) {
+                    return _AWU.T.literally_kibibyte(formatter.format(fileSize / (double) KiB.getDivider()));
+                }
+            case KB:
+                if (!isIECPrefix && fileSizeAbs >= KB.getDivider()) {
+                    return formatter.format(fileSize / (double) KB.getDivider()).concat(" KB");
+                }
+            default:
+                return _AWU.T.literally_byte_string(StringUtils.toString(formatter, fileSize));
+            }
+        }
+
+        @Override
+        public SizeUnitInterface toNonNegativeUnit() {
+            return toNonNegativeUnit("~");
+        }
+
+        @Override
+        public boolean allowNegative() {
+            return true;
+        }
+
+        @Override
+        public SizeUnitInterface toNonNegativeUnit(final String finalNegativeString) {
+            return new SizeUnitInterface() {
+                @Override
+                public boolean isIECPrefix() {
+                    return SIZEUNIT.this.isIECPrefix();
+                }
+
+                @Override
+                public long getDivider() {
+                    return SIZEUNIT.this.getDivider();
+                }
+
+                @Override
+                public SIZEUNIT getUnit() {
+                    return SIZEUNIT.this.getUnit();
+                }
+
+                @Override
+                public boolean allowNegative() {
+                    return false;
+                }
+
+                @Override
+                public SizeUnitInterface toNonNegativeUnit() {
+                    return getUnit().toNonNegativeUnit(finalNegativeString);
+                }
+
+                @Override
+                public SizeUnitInterface toNonNegativeUnit(final String negativeString) {
+                    return getUnit().toNonNegativeUnit(negativeString);
+                }
+
+                @Override
+                public String getNegativeString() {
+                    return finalNegativeString;
+                }
+            };
+        }
+
+        @Override
+        public String getNegativeString() {
+            return null;
+        }
+    }
+
+    @AboutConfig
+    @RequiresRestart("A JDownloader Restart is Required")
+    @DefaultEnumValue("TiB")
+    @DefaultOnNull
+    SIZEUNIT getMaxSizeUnit();
+
+    void setMaxSizeUnit(SIZEUNIT sizeUnit);
+
+    public static enum MacDockProgressDisplay implements LabelInterface {
+        TOTAL_PROGRESS() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.DockProgressDisplay_total_progress();
+            }
+        },
+        NOTHING() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.DockProgressDisplay_nothing();
+            }
+        };
+    }
+
+    @DefaultEnumValue("TOTAL_PROGRESS")
+    @AboutConfig
+    MacDockProgressDisplay getMacDockProgressDisplay();
+
+    void setMacDockProgressDisplay(MacDockProgressDisplay value);
+
+    public static enum WindowsTaskBarProgressDisplay implements LabelInterface {
+        TOTAL_PROGRESS() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.DockProgressDisplay_total_progress();
+            }
+        },
+        NOTHING() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.DockProgressDisplay_nothing();
+            }
+        },
+        TOTAL_PROGRESS_AND_CONNECTIONS() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.DockProgressDisplay_connections_and_progress();
+            }
+        };
+    }
+
+    @DefaultEnumValue("TOTAL_PROGRESS")
+    @AboutConfig
+    WindowsTaskBarProgressDisplay getWindowsTaskbarProgressDisplay();
+
+    void setWindowsTaskbarProgressDisplay(WindowsTaskBarProgressDisplay value);
+
+    @DefaultBooleanValue(true)
+    @AboutConfig
+    boolean isTaskBarFlashEnabled();
+
+    void setTaskBarFlashEnabled(boolean b);
+
+    public static enum StartButtonAction {
+        @EnumLabel("Add all Linkgrabber links and start Downloads.")
+        ADD_ALL_LINKS_AND_START_DOWNLOADS,
+        @EnumLabel("Start Downloads only")
+        START_DOWNLOADS_ONLY,
+        @EnumLabel("Do Nothing - Disable Action")
+        DISABLED
+    }
+
+    @DefaultEnumValue("ADD_ALL_LINKS_AND_START_DOWNLOADS")
+    @DescriptionForConfigEntry("Choose what should happen when you click on the [Start Downloads] Button when you are in the Linkgrabber Tab")
+    @AboutConfig
+    StartButtonAction getStartButtonActionInLinkgrabberContext();
+
+    void setStartButtonActionInLinkgrabberContext(StartButtonAction b);
+
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("Use horizontal Scrollbars in DownloadTable")
+    @AboutConfig
+    boolean isHorizontalScrollbarsInDownloadTableEnabled();
+
+    void setHorizontalScrollbarsInDownloadTableEnabled(boolean b);
+
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("Use horizontal Scrollbars in Linkgrabber")
+    @AboutConfig
+    boolean isHorizontalScrollbarsInLinkgrabberTableEnabled();
+
+    void setHorizontalScrollbarsInLinkgrabberTableEnabled(boolean b);
+
+    @RequiresRestart("A JDownloader Restart is Required")
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("The row that is 'touched' by the mouse cursor gets a darker shadow")
+    @AboutConfig
+    boolean isTableMouseOverHighlightEnabled();
+
+    void setTableMouseOverHighlightEnabled(boolean b);
+
+    @RequiresRestart("A JDownloader Restart is Required")
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("Packages get a different background color if enabled")
+    @AboutConfig
+    boolean isPackagesBackgroundHighlightEnabled();
+
+    void setPackagesBackgroundHighlightEnabled(boolean b);
+
+    class DefaultLookAndFeelTheme extends AbstractDefaultFactory<LookAndFeelType> {
+        @Override
+        public LookAndFeelType getDefaultValue(KeyHandler<LookAndFeelType> keyHandler) {
+            if (Application.isHeadless()) {
+                return LookAndFeelType.JAVA_SYSTEM;
+            } else {
+                if (Application.getRessourceURL("cfg/synthetica-license.key") != null && LookAndFeelType.DEFAULT.isAvailable()) {
+                    return LookAndFeelType.DEFAULT;
+                } else if (LookAndFeelType.FLATLAF_LIGHT.isAvailable()) {
+                    return LookAndFeelType.FLATLAF_LIGHT;
+                } else {
+                    return LookAndFeelType.JAVA_SYSTEM;
+                }
+            }
+        }
+    }
+
+    @AboutConfig
+    @RequiresRestart("A JDownloader Restart is Required")
+    @DefaultFactory(value = DefaultLookAndFeelTheme.class)
+    LookAndFeelType getLookAndFeelTheme();
+
+    void setLookAndFeelTheme(LookAndFeelType type);
+
+    @AboutConfig
+    @DefaultEnumValue("TO_FRONT")
+    FrameState getNewDialogFrameState();
+
+    void setNewDialogFrameState(FrameState state);
+
+    public static enum NewLinksInLinkgrabberAction {
+        SWITCH,
+        NOTHING,
+        TO_FRONT,
+        FOCUS
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("SWITCH")
+    NewLinksInLinkgrabberAction getNewLinksActionV2();
+
+    void setNewLinksActionV2(NewLinksInLinkgrabberAction action);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("JDownloader uses a workaround to bring it's window or dialogs to focused to front. It simulates an ALT key shortcut. \r\nIf disabled, you will get focus problems")
+    @DefaultBooleanValue(true)
+    boolean isWindowsWindowManagerAltKeyWorkaroundEnabled();
+
+    void setWindowsWindowManagerAltKeyWorkaroundEnabled(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("JDownloader uses a workaround to bring it's window or dialogs to focused to front. It simulates an ALT key shortcut. \r\nIf disabled, you will get focus problems")
+    @DefaultIntArrayValue({ KeyEvent.VK_CONTROL, KeyEvent.VK_ALT, KeyEvent.VK_SHIFT })
+    int[] getWindowsWindowManagerAltKeyCombi();
+
+    void setWindowsWindowManagerAltKeyCombi(int[] keys);
+
+    @AboutConfig
+    @RequiresRestart("A Windows Reboot is Required")
+    @DescriptionForConfigEntry("This value is read from the windows registry. if you set it, JDownloader will write it back to the registry.")
+    void setWindowsWindowManagerForegroundLockTimeout(int readForegroundLockTimeout);
+
+    int getWindowsWindowManagerForegroundLockTimeout();
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isUpdateButtonFlashingEnabled();
+
+    void setUpdateButtonFlashingEnabled(boolean b);
+
+    public static enum ShowSpeedInWindowTitleTrigger {
+        @EnumLabel("Never")
+        NEVER,
+        @EnumLabel("Only if JD is minimized to Taskbar")
+        WHEN_WINDOW_IS_MINIMIZED,
+        @EnumLabel("Always")
+        ALWAYS
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("WHEN_WINDOW_IS_MINIMIZED")
+    ShowSpeedInWindowTitleTrigger getSpeedInWindowTitle();
+
+    void setSpeedInWindowTitle(ShowSpeedInWindowTitleTrigger b);
+
+    @AboutConfig
+    @DefaultIntValue(14)
+    @DescriptionForConfigEntry("Days to keep disabled accounts displayed in PremiumBar and AccountToolTip overviews.")
+    int getPremiumStatusBarDisabledAccountExpire();
+
+    void setPremiumStatusBarDisabledAccountExpire(int i);
+
+    public static enum PremiumStatusBarDisplay {
+        @EnumLabel("Group by Account Type")
+        GROUP_BY_ACCOUNT_TYPE,
+        @EnumLabel("Group supported Hoster")
+        GROUP_BY_SUPPORTED_HOSTS,
+        @EnumLabel("Don't Group")
+        DONT_GROUP,
+        @EnumLabel("Group supported Accounts")
+        GROUP_BY_SUPPORTED_ACCOUNTS
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("GROUP_BY_ACCOUNT_TYPE")
+    PremiumStatusBarDisplay getPremiumStatusBarDisplay();
+
+    void setPremiumStatusBarDisplay(PremiumStatusBarDisplay type);
+
+    public static enum PackageDoubleClickAction {
+        @EnumLabel("Expand or collapse Folder")
+        EXPAND_COLLAPSE_TOGGLE,
+        @EnumLabel("Open Downloadfolder")
+        OPEN_FOLDER,
+        @EnumLabel("Rename package")
+        RENAME,
+        @EnumLabel("Open Link or Package Properties Panel")
+        OPEN_PROPERTIES_PANEL,
+        @EnumLabel("Do nothing")
+        NOTHING
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("OPEN_FOLDER")
+    PackageDoubleClickAction getPackageDoubleClickAction();
+
+    void setPackageDoubleClickAction(PackageDoubleClickAction action);
+
+    public static enum LinkDoubleClickAction {
+        @EnumLabel("Open Downloadfolder")
+        OPEN_FOLDER,
+        @EnumLabel("Open File")
+        OPEN_FILE,
+        @EnumLabel("Rename File")
+        RENAME,
+        @EnumLabel("Open Link or Package Properties Panel")
+        OPEN_PROPERTIES_PANEL,
+        @EnumLabel("Do nothing")
+        NOTHING
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("OPEN_FILE")
+    LinkDoubleClickAction getLinkDoubleClickAction();
+
+    void setLinkDoubleClickAction(LinkDoubleClickAction action);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelCommentVisible();
+
+    void setLinkPropertiesPanelCommentVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelFilenameVisible();
+
+    void setLinkPropertiesPanelFilenameVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelPackagenameVisible();
+
+    void setLinkPropertiesPanelPackagenameVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelDownloadPasswordVisible();
+
+    void setLinkPropertiesPanelDownloadPasswordVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelChecksumVisible();
+
+    void setLinkPropertiesPanelChecksumVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelArchivepasswordVisible();
+
+    void setLinkPropertiesPanelArchivepasswordVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isLinkPropertiesPanelSaveToVisible();
+
+    void setLinkPropertiesPanelSaveToVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isLinkPropertiesPanelDownloadFromVisible();
+
+    void setLinkPropertiesPanelDownloadFromVisible(boolean v);
+
+    //
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelCommentVisible();
+
+    void setDownloadsPropertiesPanelCommentVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isDownloadsPropertiesPanelFilenameVisible();
+
+    void setDownloadsPropertiesPanelFilenameVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelPackagenameVisible();
+
+    void setDownloadsPropertiesPanelPackagenameVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelDownloadPasswordVisible();
+
+    void setDownloadsPropertiesPanelDownloadPasswordVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelChecksumVisible();
+
+    void setDownloadsPropertiesPanelChecksumVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelArchivepasswordVisible();
+
+    void setDownloadsPropertiesPanelArchivepasswordVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadsPropertiesPanelSaveToVisible();
+
+    void setDownloadsPropertiesPanelSaveToVisible(boolean v);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isDownloadsPropertiesPanelDownloadFromVisible();
+
+    void setDownloadsPropertiesPanelDownloadFromVisible(boolean v);
+
+    public static enum RlyWarnLevel {
+        @EnumLabel("HIGH! Show all 'Are you sure?' dialogs!")
+        HIGH,
+        @EnumLabel("NORMAL! Show the most important 'Are you sure?' dialogs!")
+        NORMAL,
+        @EnumLabel("LOW! Show only severe 'Are you sure?' dialogs!")
+        /** Only severe ones */
+        LOW,
+        @EnumLabel("DISABLED! Hide all 'Are you sure?' dialogs! (As far as possible)")
+        DISABLED;
+    }
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Choose how many 'Are you sure?' warnings you want to see (Bug me not).")
+    @DefaultEnumValue("NORMAL")
+    public RlyWarnLevel getRlyWarnLevel();
+
+    public void setRlyWarnLevel(RlyWarnLevel level);
+
+    public static enum DeleteFileOptions implements LabelInterface {
+        REMOVE_LINKS_ONLY() {
+            @Override
+            public String getLabel() {
+                return org.jdownloader.gui.translate._GUI.T.ConfirmDeleteLinksDialog_layoutDialogContent_no_filedelete2();
+            }
+        },
+        REMOVE_LINKS_AND_RECYCLE_FILES() {
+            @Override
+            public String getLabel() {
+                return org.jdownloader.gui.translate._GUI.T.ConfirmDeleteLinksDialog_layoutDialogContent_Recycle_2();
+            }
+        },
+        REMOVE_LINKS_AND_DELETE_FILES() {
+            @Override
+            public String getLabel() {
+                return org.jdownloader.gui.translate._GUI.T.ConfirmDeleteLinksDialog_layoutDialogContent_delete_2();
+            }
+        };
+
+        @Override
+        public String getLabel() {
+            return null;
+        }
+    }
+
+    @DescriptionForConfigEntry("Placeholders: |#TITLE|, | - #SPEED/s|, | - #UPDATENOTIFY|, | - #AVGSPEED|, | - #RUNNING_DOWNLOADS|")
+    @DefaultStringValue("|#TITLE|| - #SPEED/s|| - #UPDATENOTIFY|")
+    @AboutConfig
+    public String getTitlePattern();
+
+    public void setTitlePattern(String pattern);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isBypassAllRlyDeleteDialogsEnabled();
+
+    void setBypassAllRlyDeleteDialogsEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isHelpDialogsEnabled();
+
+    void setHelpDialogsEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isHateCaptchasTextInCaptchaDialogVisible();
+
+    void setHateCaptchasTextInCaptchaDialogVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isPropertiesPanelHeightNormalized();
+
+    void setPropertiesPanelHeightNormalized(boolean b);
+
+    // @AboutConfig
+    // @DefaultBooleanValue(true)
+    // boolean isOSRSurveyEnabled();
+    //
+    // void setOSRSurveyEnabled(boolean b);
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isSpecialDealsEnabled();
+
+    void setSpecialDealsEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isBannerEnabled();
+
+    void setBannerEnabled(boolean b);
+
+    long getBannerChangeTimestamp();
+
+    void setBannerChangeTimestamp(long timestamp);
+
+    //
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadPackageCountVisible();
+
+    void setOverviewPanelDownloadPackageCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberHosterCountVisible();
+
+    void setOverviewPanelLinkgrabberHosterCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadLinkCountVisible();
+
+    void setOverviewPanelDownloadLinkCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadTotalBytesVisible();
+
+    void setOverviewPanelDownloadTotalBytesVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isOverviewPanelDownloadLinksFailedCountVisible();
+
+    void setOverviewPanelDownloadLinksFailedCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isOverviewPanelDownloadLinksFinishedCountVisible();
+
+    void setOverviewPanelDownloadLinksFinishedCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isOverviewPanelDownloadLinksSkippedCountVisible();
+
+    void setOverviewPanelDownloadLinksSkippedCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadRunningDownloadsCountVisible();
+
+    void setOverviewPanelDownloadRunningDownloadsCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadSpeedVisible();
+
+    void setOverviewPanelDownloadSpeedVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadETAVisible();
+
+    void setOverviewPanelDownloadETAVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadConnectionsVisible();
+
+    void setOverviewPanelDownloadConnectionsVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadBytesLoadedVisible();
+
+    void setOverviewPanelDownloadBytesLoadedVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelDownloadBytesRemainingVisible();
+
+    void setOverviewPanelDownloadBytesRemainingVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberPackageCountVisible();
+
+    void setOverviewPanelLinkgrabberPackageCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberLinksCountVisible();
+
+    void setOverviewPanelLinkgrabberLinksCountVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberTotalBytesVisible();
+
+    void setOverviewPanelLinkgrabberTotalBytesVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberStatusUnknownVisible();
+
+    void setOverviewPanelLinkgrabberStatusUnknownVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberStatusOnlineVisible();
+
+    void setOverviewPanelLinkgrabberStatusOnlineVisible(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isOverviewPanelLinkgrabberStatusOfflineVisible();
+
+    void setOverviewPanelLinkgrabberStatusOfflineVisible(boolean b);
+
+    public static enum ConfirmIncompleteArchiveAction implements LabelInterface {
+        ASK() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.GraphicalUserInterfaceSettings_getLabel_ask_();
+            }
+        },
+        KEEP_IN_LINKGRABBER() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.GraphicalUserInterfaceSettings_getLabel_do_not_move();
+            }
+        },
+        MOVE_TO_DOWNLOADLIST() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.GraphicalUserInterfaceSettings_getLabel_move_anyway();
+            }
+        },
+        DELETE() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.GraphicalUserInterfaceSettings_getLabel_delete();
+            }
+        }
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("ASK")
+    ConfirmIncompleteArchiveAction getConfirmIncompleteArchiveAction();
+
+    void setConfirmIncompleteArchiveAction(ConfirmIncompleteArchiveAction action);
+
+    @AboutConfig
+    @RequiresRestart("Restart is Required")
+    String getCustomLookAndFeelClass();
+
+    void setCustomLookAndFeelClass(String clazz);
+
+    @AboutConfig
+    @ValidatorFactory(DefaultSimpleDateValidator.class)
+    @RequiresRestart("Restart is Required")
+    String getDateTimeFormatAccountManagerExpireDateColumn();
+
+    void setDateTimeFormatAccountManagerExpireDateColumn(String df);
+
+    @AboutConfig
+    @ValidatorFactory(DefaultSimpleDateValidator.class)
+    @RequiresRestart("Restart is Required")
+    @DescriptionForConfigEntry("Applies for column in Linkgrabber- and Downloadlist")
+    String getDateTimeFormatDownloadListAddedDateColumn();
+
+    void setDateTimeFormatDownloadListAddedDateColumn(String df);
+
+    @AboutConfig
+    @ValidatorFactory(DefaultSimpleDateValidator.class)
+    @RequiresRestart("Restart is Required")
+    @DescriptionForConfigEntry("Applies for column in Linkgrabber- and Downloadlist")
+    String getDateTimeFormatDownloadListModifiedDateColumn();
+
+    void setDateTimeFormatDownloadListModifiedDateColumn(String df);
+
+    @AboutConfig
+    @ValidatorFactory(DefaultSimpleDateValidator.class)
+    @RequiresRestart("Restart is Required")
+    String getDateTimeFormatDownloadListFinishedDateColumn();
+
+    void setDateTimeFormatDownloadListFinishedDateColumn(String df);
+
+    @RequiresRestart("Restart is Required")
+    @AboutConfig
+    Map<String, Long> getPremiumExpireWarningMapV2();
+
+    void setPremiumExpireWarningMapV2(Map<String, Long> value);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isPremiumExpireWarningEnabled();
+
+    void setPremiumExpireWarningEnabled(boolean b);
+
+    @AboutConfig
+    @RequiresRestart("Restart is Required")
+    @DefaultBooleanValue(true)
+    boolean isStatusBarAddPremiumButtonVisible();
+
+    void setStatusBarAddPremiumButtonVisible(boolean b);
+
+    @AboutConfig
+    @RequiresRestart("Restart is Required")
+    @DescriptionForConfigEntry("Table wrap enabled? Cursor/Selection will jump to the begin/end of the table when reaching bottom/top position")
+    @DefaultBooleanValue(true)
+    boolean isTableWrapAroundEnabled();
+
+    void setTableWrapAroundEnabled(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("The last used the Regex option for 'Rename Filename/Packagename' Dialog")
+    @DefaultBooleanValue(false)
+    boolean isRenameActionRegexEnabled();
+
+    void setRenameActionRegexEnabled(boolean b);
+
+    @DescriptionForConfigEntry("If enabled ctrl+A first of all selects all children in all current packages, and in a second step all packages")
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isTwoStepCtrlASelectionEnabled();
+
+    void setTwoStepCtrlASelectionEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isDownloadControlColumnAutoShowEnabled();
+
+    void setDownloadControlColumnAutoShowEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isPriorityColumnAutoShowEnabled();
+
+    void setPriorityColumnAutoShowEnabled(boolean b);
+
+    @AboutConfig
+    @DescriptionForConfigEntry("Shortcut for the  Refresh Button in the captcha dialog")
+    @DefaultStringValue("pressed F5")
+    String getShortcutForCaptchaDialogRefresh();
+
+    void setShortcutForCaptchaDialogRefresh(String b);
+
+    @AboutConfig
+    @RequiresRestart("Restart JDownloader if you changed this value")
+    @DescriptionForConfigEntry("Interval of the Downloads Table Refresher. Default 1000ms (once per second). Decreasing this value will cost CPU Power")
+    @DefaultLongValue(1000)
+    long getDownloadsTableRefreshInterval();
+
+    void setDownloadsTableRefreshInterval(long ms);
+
+    public static class Position implements Storable {
+        public Position(/* storable */) {
+        }
+
+        private int x = -1;
+
+        public int getX() {
+            return x;
+        }
+
+        public void setX(int x) {
+            this.x = x;
+        }
+
+        public int getY() {
+            return y;
+        }
+
+        public void setY(int y) {
+            this.y = y;
+        }
+
+        private int y = -1;
+    }
+
+    @AboutConfig
+    @RequiresRestart("Restart JDownloader if you changed this value")
+    @DescriptionForConfigEntry("Customize the order of the Overview Panel Entries in x and y position")
+    HashMap<String, Position> getOverviewPositions();
+
+    void setOverviewPositions(HashMap<String, Position> map);
+
+    public static enum DockingPosition implements LabelInterface {
+        INVISIBE() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.setOverviewPositions_invisible();
+            }
+        },
+        NORTH() {
+            @Override
+            public String getLabel() {
+                return _GUI.T.setOverviewPositions_north();
+            }
+        },
+        SOUTH() {
+            public String getLabel() {
+                return _GUI.T.setOverviewPositions_south();
+            }
+        }
+    }
+
+    @DefaultEnumValue("SOUTH")
+    @AboutConfig
+    DockingPosition getLinkgrabberBottombarPosition();
+
+    void setLinkgrabberBottombarPosition(DockingPosition pos);
+
+    @DefaultEnumValue("SOUTH")
+    @AboutConfig
+    DockingPosition getDownloadListBottombarPosition();
+
+    void setDownloadListBottombarPosition(DockingPosition pos);
+
+    public static enum DownloadFolderChooserDialogDefaultPath implements LabelInterface {
+        CURRENT_PATH {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DownloadFolderChooserDialogDefaultPath_CURRENT_PATH();
+            }
+        },
+        GLOBAL_DOWNLOAD_DIRECTORY {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DownloadFolderChooserDialogDefaultPath_GLOBAL_DOWNLOAD_DIRECTORY(CFG_GENERAL.DEFAULT_DOWNLOAD_FOLDER.getValue());
+            }
+        },
+        LAST_USED_PATH {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DownloadFolderChooserDialogDefaultPath_LAST_USED_PATH();
+            }
+        }
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("CURRENT_PATH")
+    DownloadFolderChooserDialogDefaultPath getDownloadFolderChooserDefaultPath();
+
+    void setDownloadFolderChooserDefaultPath(DownloadFolderChooserDialogDefaultPath path);
+
+    public static enum DonateButtonState implements LabelInterface {
+        AUTO_HIDDEN {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DonateButtonState_AUTO_HIDDEN();
+            }
+        },
+        AUTO_VISIBLE {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DonateButtonState_AUTO_VISIBLE();
+            }
+        },
+        CUSTOM_VISIBLE {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DonateButtonState_CUSTOM_VISIBLE();
+            }
+        },
+        CUSTOM_HIDDEN {
+            @Override
+            public String getLabel() {
+                return _JDT.T.DonateButtonState_CUSTOM_HIDDEN();
+            }
+        };
+    }
+
+    @AboutConfig
+    @DefaultEnumValue("AUTO_VISIBLE")
+    @ConfigEntryKeywords({ "donat", "contribut" })
+    DonateButtonState getDonateButtonState();
+
+    void setDonateButtonState(DonateButtonState state);
+
+    void setDonateButtonLatestAutoChange(long currentTimeMillis);
+
+    long getDonateButtonLatestAutoChange();
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("If disabled, the captcha has no border painted, and the dialog looks like in jd09")
+    boolean isCaptchaDialogBorderAroundImageEnabled();
+
+    void setCaptchaDialogBorderAroundImageEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    boolean isAvailableColumnTextVisible();
+
+    void setAvailableColumnTextVisible(boolean b);
+
+    @AboutConfig
+    String getDonationNotifyID();
+
+    void setDonationNotifyID(String id);
+
+    void setDownloadListScrollPosition(int[] is);
+
+    int[] getDownloadListScrollPosition();
+
+    void setLinkgrabberListScrollPosition(int[] is);
+
+    int[] getLinkgrabberListScrollPosition();
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("Set to false to invert the sort Order for the Download & Linkgrabber Tables.")
+    boolean isPrimaryTableSorterDesc();
+
+    void setPrimaryTableSorterDesc(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isPremiumDisabledWarningFlashEnabled();
+
+    void setPremiumDisabledWarningFlashEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    boolean isClipboardDisabledWarningFlashEnabled();
+
+    void setClipboardDisabledWarningFlashEnabled(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(false)
+    @DescriptionForConfigEntry("If Enabled, JDownloader will try to be always on top of all other windows")
+    boolean isMainWindowAlwaysOnTop();
+
+    void setMainWindowAlwaysOnTop(boolean b);
+
+    @AboutConfig
+    @DefaultBooleanValue(true)
+    @DescriptionForConfigEntry("If Enabled, JDownloader will open the explorer window after container(eg DLC) export")
+    boolean isContainerExportOpenExplorer();
+
+    void setContainerExportOpenExplorer(boolean b);
+}
