@@ -42,6 +42,29 @@ public final class HakobuShell {
         });
     }
 
+    /**
+     * Opens JD's window on one settings page (e.g. CaptchaConfigPanel.class), or on the settings overview when the page is null. Showing
+     * the window is done by JDGui.setContent (Hakobu overlay), so JD's own "open settings" actions work the same way.
+     */
+    public static void showSettings(final Class<?> panel) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                final JDGui gui = JDGui.getInstance();
+                if (gui == null) {
+                    return;
+                }
+                org.appwork.storage.config.JsonConfig.create(org.jdownloader.settings.GraphicalUserInterfaceSettings.class).setConfigViewVisible(true);
+                final jd.gui.swing.jdgui.views.settings.ConfigurationView view = jd.gui.swing.jdgui.views.settings.ConfigurationView.getInstance();
+                gui.setContent(view, true);
+                showEngineWindow();
+                if (panel != null) {
+                    view.setSelectedSubPanel(panel);
+                }
+            }
+        });
+    }
+
     public static void hideEngineWindow() {
         engineWindowRequested = false;
         SwingUtilities.invokeLater(new Runnable() {

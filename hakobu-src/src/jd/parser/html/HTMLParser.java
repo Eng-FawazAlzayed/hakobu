@@ -1205,6 +1205,13 @@ public class HTMLParser {
                      */
                     continue;
                 }
+                if (protocol != null && protocol.toString().regionMatches(true, 0, "magnet:", 0, 7)) {
+                    /*
+                     * Hakobu: magnet links often carry unencoded tracker URLs (&tr=http://...). They are part of the magnet, not
+                     * separate links: splitting them off truncated the magnet and queued bogus "...tracker.torrent" rows.
+                     */
+                    continue;
+                }
                 final Matcher mlinks = HTMLParser.protocols.matcher(link);
                 int start = -1;
                 /*

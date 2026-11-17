@@ -28,7 +28,7 @@ import jd.plugins.PluginForDecrypt;
  * .torrent links and local .torrent files: reads the torrent once, stores its metadata in Hakobu's cache and hands a magnet link to the
  * torrent plugin, so no DHT lookup is needed.
  */
-@DecrypterPlugin(revision = "$Revision: 1 $", interfaceVersion = 3, names = { "torrentfile" }, urls = { "(?:https?://[^\\s\"'<>]+\\.torrent(?:\\?[^\\s\"'<>]*)?|file:/[^\\s\"'<>]+\\.torrent)" })
+@DecrypterPlugin(revision = "$Revision: 1 $", interfaceVersion = 3, names = { "torrentfile" }, urls = { "(?:https?://(?![^\\s\"'<>]*/announce)[^\\s\"'<>]+\\.torrent(?![\\w.\\-])(?:\\?[^\\s\"'<>]*)?|file:/[^\\s\"'<>]+\\.torrent(?![\\w.\\-]))" })
 public class HakobuTorrentFileCrawler extends PluginForDecrypt {
     private static final int MAX_BYTES = 20 * 1024 * 1024;
 

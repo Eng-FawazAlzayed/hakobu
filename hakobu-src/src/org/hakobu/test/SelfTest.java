@@ -233,6 +233,12 @@ public class SelfTest implements Runnable {
             if (wants("themes")) {
                 stepThemes();
             }
+            if (wants("magnet")) {
+                stepMagnet();
+            }
+            if (wants("captcha")) {
+                stepCaptchaSettings();
+            }
             if (wants("engine")) {
                 stepEngineWindow();
             }
@@ -553,6 +559,98 @@ public class SelfTest implements Runnable {
         javax.swing.SwingUtilities.invokeAndWait(() -> f[0].dispatchEvent(new java.awt.event.WindowEvent(f[0], java.awt.event.WindowEvent.WINDOW_CLOSING)));
         Thread.sleep(1500);
         check("closing More settings only hides it", !f[0].isVisible() && HakobuWindow.get() != null, null);
+    }
+
+    /* 7: a magnet with unencoded tracker URLs stays one link (no bogus "...tracker.torrent" row) */
+    private void stepMagnet() throws Exception {
+        log("--- step magnet");
+        final String magnet = "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=wss://tracker.webtorrent.dev&tr=udp://tracker.opentrackr.org:1337/announce&tr=http://open.tracker.cl:1337/announce&tr=udp://open.stealth.si:80/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=https://tracker.example.org:443/announce";
+        final String[] found = jd.parser.html.HTMLParser.getHttpLinks(magnet, null);
+        check("parser finds one link in a magnet with tracker URLs", found != null && found.length == 1 && magnet.equals(found[0]), java.util.Arrays.toString(found));
+        final java.util.regex.Pattern tf = java.util.regex.Pattern.compile(jd.plugins.decrypter.HakobuTorrentFileCrawler.class.getAnnotation(jd.plugins.DecrypterPlugin.class).urls()[0]);
+        check(".torrent pattern skips tracker announce URLs", !tf.matcher("http://open.tracker.cl:1337/announce&tr=udp://tracker.torrent").find() && !tf.matcher("https://tracker.torrent.eu.org:451/announce").find(), null);
+        check(".torrent pattern still takes .torrent links", tf.matcher("https://webtorrent.io/torrents/sintel.torrent").matches() && tf.matcher("https://example.org/get.torrent?id=5").matches() && tf.matcher("file:/C:/x/a.torrent").matches(), null);
+        /* the test profile must not pick up whatever is on the real clipboard */
+        org.jdownloader.settings.staticreferences.CFG_GUI.CLIPBOARD_MONITORED.setValue(false);
+        LinkCollector.getInstance().clear();
+        final int before = Engine.downloads().size();
+        Engine.addLinks(magnet);
+        Thread.sleep(3000);
+        /* rows may stay in the grabber or be moved to the download list (auto-confirm), so count both */
+        waitFor(() -> !Engine.isCrawling() && grabberSettled() && Engine.grabbed().size() + Engine.downloads().size() - before >= 1, 150);
+        Thread.sleep(5000);
+        final StringBuilder sb = new StringBuilder();
+        int rows = 0, torrents = 0;
+        for (final GrabItem i : Engine.grabbed()) {
+            rows++;
+            torrents += "torrent".equals(i.host) ? 1 : 0;
+            sb.append("grabber: ").append(i.name).append(" [").append(i.host).append("] ");
+        }
+        final List<DlItem> dls = Engine.downloads();
+        final Set<Long> added = new HashSet<Long>();
+        for (int k = before; k < dls.size(); k++) {
+            final DlItem d = dls.get(k);
+            rows++;
+            torrents += "torrent".equals(d.host) ? 1 : 0;
+            added.add(d.id);
+            sb.append("downloads: ").append(d.name).append(" [").append(d.host).append("] ");
+        }
+        check("pasting it adds exactly one row, the torrent", rows == 1 && torrents == 1, sb.toString());
+        LinkCollector.getInstance().clear();
+        Engine.remove(added);
+    }
+
+    /** Paints the window itself (not the screen), so other windows on top never end up in the picture. */
+    private static java.awt.image.BufferedImage paintFrame(final java.awt.Frame f) throws Exception {
+        final java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(Math.max(1, f.getWidth()), Math.max(1, f.getHeight()), java.awt.image.BufferedImage.TYPE_INT_RGB);
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            final java.awt.Graphics2D g = img.createGraphics();
+            f.printAll(g);
+            g.dispose();
+        });
+        return img;
+    }
+
+    private static Class<?> shownPage() throws Exception {
+        final Class<?>[] c = new Class<?>[1];
+        javax.swing.SwingUtilities.invokeAndWait(() -> c[0] = ((jd.gui.swing.jdgui.views.settings.ConfigurationPanel) jd.gui.swing.jdgui.views.settings.ConfigurationView.getInstance().getContent()).getSelectedSubPanelClass());
+        return c[0];
+    }
+
+    /* 8: "Settings" in captcha dialogs and the More settings tiles open the settings window on the right page */
+    private void stepCaptchaSettings() throws Exception {
+        log("--- step captcha settings");
+        final java.awt.Frame[] f = new java.awt.Frame[1];
+        jd.gui.swing.jdgui.views.settings.panels.anticaptcha.CaptchaConfigPanel.showCaptchaSettings();
+        Thread.sleep(4000);
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            f[0] = jd.gui.swing.jdgui.JDGui.getInstance().getMainFrame();
+        });
+        check("captcha dialog's Settings button shows the settings window", f[0] != null && f[0].isVisible(), null);
+        check("it opens on the Captchas page", shownPage() == jd.gui.swing.jdgui.views.settings.panels.anticaptcha.CaptchaConfigPanel.class, String.valueOf(shownPage()));
+
+        try {
+            final java.awt.image.BufferedImage img = paintFrame(f[0]);
+            javax.imageio.ImageIO.write(img, "png", new File(dir, "21-captcha-settings.png"));
+            log("screenshot 21-captcha-settings.png");
+        } catch (final Throwable e) {
+            log("screenshot of captcha settings failed: " + e);
+        }
+        org.hakobu.ui.HakobuShell.hideEngineWindow();
+        Thread.sleep(1500);
+        org.hakobu.ui.HakobuShell.showSettings(jd.gui.swing.jdgui.views.settings.panels.accountmanager.AccountManagerSettings.class);
+        Thread.sleep(3000);
+        check("Accounts tile shows the settings window", f[0].isVisible(), null);
+        check("it opens on the Accounts page", shownPage() == jd.gui.swing.jdgui.views.settings.panels.accountmanager.AccountManagerSettings.class, String.valueOf(shownPage()));
+        try {
+            final java.awt.image.BufferedImage img = paintFrame(f[0]);
+            javax.imageio.ImageIO.write(img, "png", new File(dir, "22-accounts-settings.png"));
+            log("screenshot 22-accounts-settings.png");
+        } catch (final Throwable e) {
+            log("screenshot of accounts failed: " + e);
+        }
+        org.hakobu.ui.HakobuShell.hideEngineWindow();
+        Thread.sleep(1500);
     }
 
     /* 5: themes render */

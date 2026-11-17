@@ -1237,12 +1237,12 @@ public class HakobuWindow {
                 general.getChildren().addAll(label("General", "set-title"), setRow("Download folder", new HBox(8, folder, browse)), setRow("Downloads at the same time", max), setRow("Default video quality", quality), setRow("Theme", theme), clip);
                 final FlowPane tiles = new FlowPane(12, 12);
                 tiles.getChildren().addAll(
-                        tile("Accounts", "Premium and debrid accounts (TorBox, Real-Debrid, file hosts)"),
-                        tile("Captchas", "How captchas are shown: in the app or in your browser"),
-                        tile("Connection", "Proxies, reconnect, bandwidth limits"),
-                        tile("Packagizer", "Rules for folders, names and priorities"),
-                        tile("Archive extraction", "Unpack .zip, .rar and .7z when done, passwords"),
-                        tile("Scheduler and more", "Scheduler, folder watch, event scripter, all advanced options"));
+                        tile("Accounts", "Premium and debrid accounts (TorBox, Real-Debrid, file hosts)", jd.gui.swing.jdgui.views.settings.panels.accountmanager.AccountManagerSettings.class),
+                        tile("Captchas", "Captcha solvers and how captchas are shown", jd.gui.swing.jdgui.views.settings.panels.anticaptcha.CaptchaConfigPanel.class),
+                        tile("Connection", "Proxies, reconnect, bandwidth limits", jd.gui.swing.jdgui.views.settings.panels.proxy.ProxyConfig.class),
+                        tile("Packagizer", "Rules for folders, names and priorities", jd.gui.swing.jdgui.views.settings.panels.packagizer.Packagizer.class),
+                        tile("Archive extraction", "Unpack .zip, .rar and .7z when done, passwords", null),
+                        tile("Scheduler and more", "Scheduler, folder watch, event scripter, all advanced options", jd.gui.swing.jdgui.views.settings.panels.advanced.AdvancedSettings.class));
                 final VBox more = new VBox(10, label("More settings", "set-title"), label("Everything else JDownloader's engine can do opens in the full settings window.", "muted"), tiles);
                 more.getStyleClass().add("set-group");
                 final VBox inner = new VBox(16, general, more, aboutBox());
@@ -1254,20 +1254,20 @@ public class HakobuWindow {
             return node;
         }
 
-        private Node tile(final String title, final String text) {
+        private Node tile(final String title, final String text, final Class<?> panel) {
             final VBox t = new VBox();
             t.getStyleClass().add("tile");
             final Label d = label(text, "dim");
             d.setWrapText(true);
             t.getChildren().addAll(label(title, "tile-title"), d);
-            t.setOnMouseClicked(e -> HakobuShell.showEngineWindow());
+            t.setOnMouseClicked(e -> HakobuShell.showSettings(panel));
             return t;
         }
 
         private Node aboutBox() {
             final VBox a = new VBox(6);
             a.getStyleClass().add("set-group");
-            final Label t = label("Hakobu (Java) is built on JDownloader 2 by AppWork GmbH and the JD community, jlibtorrent by FrostWire, and yt-dlp. GPL-3.0-or-later.", "muted");
+            final Label t = label("Hakobu (Java) " + org.hakobu.app.Version.NAME + " is built on JDownloader 2 by AppWork GmbH and the JD community, jlibtorrent by FrostWire, and yt-dlp. GPL-3.0-or-later.", "muted");
             t.setWrapText(true);
             a.getChildren().addAll(label("About", "set-title"), t);
             return a;
